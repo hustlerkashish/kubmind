@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${POSTGRES_HOST:postgres}:5432/${POSTGRES_DB:kubemind}}
+    username: ${POSTGRES_USER:kubemind_admin}
+    password: ${POSTGRES_PASSWORD:kubemind_secure_password_2026}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+logging:
+  level:
+    root: INFO
+    io.kubemind: INFO

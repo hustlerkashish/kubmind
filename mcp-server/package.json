@@ -1,0 +1,20 @@
+{
+  "name": "kubemind-mcp-server",
+  "version": "1.0.0",
+  "description": "Dedicated Model Context Protocol (MCP) tool provider for KubeMind AI agents",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc-watch --onSuccess \"node dist/index.js\""
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.9",
+    "typescript": "^5.5.2"
+  }
+}

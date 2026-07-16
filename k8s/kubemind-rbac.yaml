@@ -1,0 +1,30 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubemind-reader
+rules:
+- apiGroups: [""]
+  resources: ["pods", "nodes", "services", "namespaces", "events", "pods/log"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubemind-reader-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubemind-reader
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: docker-for-desktop
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: docker-desktop

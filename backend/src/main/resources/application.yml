@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: kubemind-backend
+  profiles:
+    active: dev
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api/v1
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+  cors:
+    allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:80}
+  prometheus:
+    url: ${PROMETHEUS_URL:http://prometheus-server:80}
+
+github:
+  token: ${GITHUB_TOKEN:}
+  repos: ${GITHUB_REPOS:}
+
+grafana:
+  url: ${GRAFANA_URL:}
+  api-key: ${GRAFANA_API_KEY:}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: alpha
