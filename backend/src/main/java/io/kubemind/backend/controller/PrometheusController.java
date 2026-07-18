@@ -22,43 +22,63 @@ public class PrometheusController {
 
     @GetMapping("/cpu")
     @Operation(summary = "Query PromQL CPU utilization time-series metrics")
-    public ResponseEntity<ApiResponse<PrometheusQueryResultDto>> getCpuMetrics(@RequestParam(required = false, defaultValue = "1h") String range) {
-        return ResponseEntity.ok(ApiResponse.success(prometheusService.getCpuMetrics(range), "CPU metrics retrieved"));
+    public ResponseEntity<ApiResponse<PrometheusQueryResultDto>> getCpuMetrics(
+            @RequestParam(required = false, defaultValue = "1h") String range,
+            @RequestHeader(value = "X-Target-Prometheus-Url", required = false) String promUrl
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(prometheusService.getCpuMetrics(range, promUrl), "CPU metrics retrieved"));
     }
 
     @GetMapping("/memory")
     @Operation(summary = "Query PromQL Memory allocation time-series metrics")
-    public ResponseEntity<ApiResponse<PrometheusQueryResultDto>> getMemoryMetrics(@RequestParam(required = false, defaultValue = "1h") String range) {
-        return ResponseEntity.ok(ApiResponse.success(prometheusService.getMemoryMetrics(range), "Memory metrics retrieved"));
+    public ResponseEntity<ApiResponse<PrometheusQueryResultDto>> getMemoryMetrics(
+            @RequestParam(required = false, defaultValue = "1h") String range,
+            @RequestHeader(value = "X-Target-Prometheus-Url", required = false) String promUrl
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(prometheusService.getMemoryMetrics(range, promUrl), "Memory metrics retrieved"));
     }
 
     @GetMapping("/network")
     @Operation(summary = "Query PromQL Network RX/TX throughput metrics")
-    public ResponseEntity<ApiResponse<PrometheusQueryResultDto>> getNetworkMetrics(@RequestParam(required = false, defaultValue = "1h") String range) {
-        return ResponseEntity.ok(ApiResponse.success(prometheusService.getNetworkMetrics(range), "Network throughput metrics retrieved"));
+    public ResponseEntity<ApiResponse<PrometheusQueryResultDto>> getNetworkMetrics(
+            @RequestParam(required = false, defaultValue = "1h") String range,
+            @RequestHeader(value = "X-Target-Prometheus-Url", required = false) String promUrl
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(prometheusService.getNetworkMetrics(range, promUrl), "Network throughput metrics retrieved"));
     }
 
     @GetMapping("/disk")
     @Operation(summary = "Query PromQL Disk storage I/O metrics")
-    public ResponseEntity<ApiResponse<PrometheusQueryResultDto>> getDiskMetrics(@RequestParam(required = false, defaultValue = "1h") String range) {
-        return ResponseEntity.ok(ApiResponse.success(prometheusService.getDiskMetrics(range), "Disk storage metrics retrieved"));
+    public ResponseEntity<ApiResponse<PrometheusQueryResultDto>> getDiskMetrics(
+            @RequestParam(required = false, defaultValue = "1h") String range,
+            @RequestHeader(value = "X-Target-Prometheus-Url", required = false) String promUrl
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(prometheusService.getDiskMetrics(range, promUrl), "Disk storage metrics retrieved"));
     }
 
     @GetMapping("/pods")
     @Operation(summary = "Query PromQL Pod level resource metrics")
-    public ResponseEntity<ApiResponse<PrometheusQueryResultDto>> getPodMetrics(@RequestParam(required = false, defaultValue = "1h") String range) {
-        return ResponseEntity.ok(ApiResponse.success(prometheusService.getPodMetrics(range), "Pod metrics retrieved"));
+    public ResponseEntity<ApiResponse<PrometheusQueryResultDto>> getPodMetrics(
+            @RequestParam(required = false, defaultValue = "1h") String range,
+            @RequestHeader(value = "X-Target-Prometheus-Url", required = false) String promUrl
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(prometheusService.getPodMetrics(range, promUrl), "Pod metrics retrieved"));
     }
 
     @GetMapping("/nodes")
     @Operation(summary = "Query PromQL Node level capacity metrics")
-    public ResponseEntity<ApiResponse<PrometheusQueryResultDto>> getNodeMetrics(@RequestParam(required = false, defaultValue = "1h") String range) {
-        return ResponseEntity.ok(ApiResponse.success(prometheusService.getNodeMetrics(range), "Node metrics retrieved"));
+    public ResponseEntity<ApiResponse<PrometheusQueryResultDto>> getNodeMetrics(
+            @RequestParam(required = false, defaultValue = "1h") String range,
+            @RequestHeader(value = "X-Target-Prometheus-Url", required = false) String promUrl
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(prometheusService.getNodeMetrics(range, promUrl), "Node metrics retrieved"));
     }
 
     @GetMapping("/grafana-embed")
     @Operation(summary = "Get Grafana dashboard panel embed iframe URLs & configurations")
-    public ResponseEntity<ApiResponse<List<GrafanaEmbedDto>>> getGrafanaPanels() {
-        return ResponseEntity.ok(ApiResponse.success(prometheusService.getGrafanaPanels(), "Grafana embed configurations retrieved"));
+    public ResponseEntity<ApiResponse<List<GrafanaEmbedDto>>> getGrafanaPanels(
+            @RequestHeader(value = "X-Target-Prometheus-Url", required = false) String promUrl
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(prometheusService.getGrafanaPanels(promUrl), "Grafana embed configurations retrieved"));
     }
 }

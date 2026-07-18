@@ -20,14 +20,33 @@ public class GrafanaService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
+    private String resolveUrl(String override) {
+        String raw = (override != null && !override.isBlank()) ? override : grafanaUrl;
+        if (raw == null || raw.isBlank()) return null;
+        String url = raw.replaceAll("/+$", "");
+        if (url.contains("localhost")) {
+            url = url.replace("localhost", "host.docker.internal");
+        } else if (url.contains("127.0.0.1")) {
+            url = url.replace("127.0.0.1", "host.docker.internal");
+        }
+        return url;
+    }
+
     public List<Map<String, Object>> getAlerts() {
-        if (grafanaUrl == null || grafanaUrl.isBlank()) {
+        return getAlerts(null, null);
+    }
+
+    public List<Map<String, Object>> getAlerts(String urlOverride, String apiKeyOverride) {
+        String activeUrl = resolveUrl(urlOverride);
+        String activeKey = (apiKeyOverride != null && !apiKeyOverride.isBlank()) ? apiKeyOverride : grafanaApiKey;
+
+        if (activeUrl == null || activeUrl.isBlank()) {
             return Collections.emptyList();
         }
         try {
-            String url = grafanaUrl + "/api/alerts?limit=20";
+            String url = activeUrl + "/api/alerts?limit=20";
             ResponseEntity<List> response = restTemplate.exchange(
-                    url, HttpMethod.GET, buildHeaders(), List.class);
+                    url, HttpMethod.GET, buildHeaders(activeKey), List.class);
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> alerts = response.getBody();
@@ -39,24 +58,31 @@ public class GrafanaService {
                     simplified.put("dashboardUid", a.get("dashboardUid"));
                     simplified.put("panelId", a.get("panelId"));
                     simplified.put("newStateDate", a.get("newStateDate"));
-                    simplified.put("url", grafanaUrl + "/d/" + a.get("dashboardUid"));
+                    simplified.put("url", activeUrl + "/d/" + a.get("dashboardUid"));
                     return simplified;
                 }).toList();
             }
         } catch (Exception e) {
-            log.warn("Failed to fetch Grafana alerts: {}", e.getMessage());
+            log.debug("Grafana legacy /api/alerts failed for {}: {}", activeUrl, e.getMessage());
         }
         return Collections.emptyList();
     }
 
     public List<Map<String, Object>> getDashboards() {
-        if (grafanaUrl == null || grafanaUrl.isBlank()) {
+        return getDashboards(null, null);
+    }
+
+    public List<Map<String, Object>> getDashboards(String urlOverride, String apiKeyOverride) {
+        String activeUrl = resolveUrl(urlOverride);
+        String activeKey = (apiKeyOverride != null && !apiKeyOverride.isBlank()) ? apiKeyOverride : grafanaApiKey;
+
+        if (activeUrl == null || activeUrl.isBlank()) {
             return Collections.emptyList();
         }
         try {
-            String url = grafanaUrl + "/api/search?type=dash-db&limit=20";
+            String url = activeUrl + "/api/search?type=dash-db&limit=20";
             ResponseEntity<List> response = restTemplate.exchange(
-                    url, HttpMethod.GET, buildHeaders(), List.class);
+                    url, HttpMethod.GET, buildHeaders(activeKey), List.class);
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> boards = response.getBody();
@@ -64,36 +90,64 @@ public class GrafanaService {
                     Map<String, Object> d = new LinkedHashMap<>();
                     d.put("uid", b.get("uid"));
                     d.put("title", b.get("title"));
-                    d.put("url", grafanaUrl + b.get("url"));
+                    d.put("url", activeUrl + b.get("url"));
                     d.put("tags", b.get("tags"));
                     return d;
                 }).toList();
             }
         } catch (Exception e) {
-            log.warn("Failed to fetch Grafana dashboards: {}", e.getMessage());
+            log.debug("Failed to fetch Grafana dashboards from {}: {}", activeUrl, e.getMessage());
         }
         return Collections.emptyList();
     }
 
     public Map<String, Object> getSummary() {
-        boolean isConfigured = grafanaUrl != null && !grafanaUrl.isBlank();
-        List<Map<String, Object>> alerts = getAlerts();
-        long firing = alerts.stream().filter(a -> "alerting".equals(a.get("state"))).count();
-        long ok = alerts.stream().filter(a -> "ok".equals(a.get("state"))).count();
+        return getSummary(null, null);
+    }
+
+    public Map<String, Object> getSummary(String urlOverride, String apiKeyOverride) {
+        String activeUrl = resolveUrl(urlOverride);
+        String activeKey = (apiKeyOverride != null && !apiKeyOverride.isBlank()) ? apiKeyOverride : grafanaApiKey;
+        boolean isConfigured = activeUrl != null && !activeUrl.isBlank();
+        boolean connected = false;
+        int firing = 0;
+        int ok = 0;
+        int total = 0;
+
+        if (isConfigured) {
+            try {
+                String healthUrl = activeUrl + "/api/health";
+                ResponseEntity<Map> healthResp = restTemplate.exchange(healthUrl, HttpMethod.GET, buildHeaders(activeKey), Map.class);
+                if (healthResp.getStatusCode().is2xxSuccessful()) {
+                    connected = true;
+                }
+            } catch (Exception e) {
+                log.debug("Grafana health check failed for {}: {}", activeUrl, e.getMessage());
+            }
+
+            List<Map<String, Object>> alerts = getAlerts(urlOverride, apiKeyOverride);
+            if (!alerts.isEmpty()) {
+                connected = true;
+                total = alerts.size();
+                firing = (int) alerts.stream().filter(a -> "alerting".equals(a.get("state"))).count();
+                ok = (int) alerts.stream().filter(a -> "ok".equals(a.get("state"))).count();
+            }
+        }
+
         Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("totalAlerts", alerts.size());
+        summary.put("totalAlerts", total);
         summary.put("firingAlerts", firing);
         summary.put("okAlerts", ok);
-        summary.put("connected", isConfigured);
-        summary.put("grafanaUrl", isConfigured ? grafanaUrl : null);
+        summary.put("connected", connected);
+        summary.put("grafanaUrl", connected ? activeUrl : null);
         return summary;
     }
 
-    private HttpEntity<Void> buildHeaders() {
+    private HttpEntity<Void> buildHeaders(String apiKey) {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Content-Type", "application/json");
-        if (grafanaApiKey != null && !grafanaApiKey.isBlank()) {
-            headers.set("Authorization", "Bearer " + grafanaApiKey);
+        if (apiKey != null && !apiKey.isBlank()) {
+            headers.set("Authorization", "Bearer " + apiKey);
         }
         return new HttpEntity<>(headers);
     }

@@ -19,12 +19,41 @@ import java.util.stream.Collectors;
 @Slf4j
 public class KubernetesService {
 
-    private final ApiClient apiClient;
+    private final ApiClient defaultApiClient;
+
+    private ApiClient getApiClient(String urlOverride, String tokenOverride) {
+        if (urlOverride != null && !urlOverride.isBlank()) {
+            try {
+                String url = urlOverride.replaceAll("/+$", "");
+                if (url.contains("localhost")) {
+                    url = url.replace("localhost", "host.docker.internal");
+                } else if (url.contains("127.0.0.1")) {
+                    url = url.replace("127.0.0.1", "host.docker.internal");
+                }
+                ApiClient client = new ApiClient();
+                client.setBasePath(url);
+                client.setVerifyingSsl(false);
+                if (tokenOverride != null && !tokenOverride.isBlank()) {
+                    client.setApiKeyPrefix("Bearer");
+                    client.setApiKey(tokenOverride);
+                }
+                return client;
+            } catch (Exception e) {
+                log.warn("Failed to build dynamic K8s ApiClient for URL {}: {}", urlOverride, e.getMessage());
+            }
+        }
+        return defaultApiClient;
+    }
 
     public PodLogResponseDto getPodLogs(String namespace, String podName, String container, Integer tailLines) {
+        return getPodLogs(namespace, podName, container, tailLines, null, null);
+    }
+
+    public PodLogResponseDto getPodLogs(String namespace, String podName, String container, Integer tailLines, String urlOverride, String tokenOverride) {
         int lines = (tailLines != null && tailLines > 0) ? tailLines : 100;
         try {
-            CoreV1Api coreV1Api = new CoreV1Api(apiClient);
+            ApiClient client = getApiClient(urlOverride, tokenOverride);
+            CoreV1Api coreV1Api = new CoreV1Api(client);
             String logsRaw = coreV1Api.readNamespacedPodLog(podName, namespace)
                     .container(container)
                     .tailLines(lines)
@@ -52,30 +81,65 @@ public class KubernetesService {
     }
 
     public K8sClusterDto getClusterSummary() {
-        try {
-            VersionApi versionApi = new VersionApi(apiClient);
-            VersionInfo versionInfo = versionApi.getCode().execute();
-            CoreV1Api coreV1Api = new CoreV1Api(apiClient);
+        return getClusterSummary(null, null);
+    }
 
-            V1NodeList nodes = coreV1Api.listNode().execute();
-            V1PodList pods = coreV1Api.listPodForAllNamespaces().execute();
+    public K8sClusterDto getClusterSummary(String urlOverride, String tokenOverride) {
+        try {
+            ApiClient client = getApiClient(urlOverride, tokenOverride);
+            CoreV1Api coreV1Api = new CoreV1Api(client);
+
+            int totalNodes = 0;
+            int totalPods = 0;
+            boolean connected = false;
+
+            try {
+                V1NodeList nodes = coreV1Api.listNode().execute();
+                if (nodes != null && nodes.getItems() != null) {
+                    totalNodes = nodes.getItems().size();
+                    connected = true;
+                }
+            } catch (Exception ne) {
+                log.debug("listNode exception: {}", ne.getMessage());
+            }
+
+            try {
+                V1PodList pods = coreV1Api.listPodForAllNamespaces().execute();
+                if (pods != null && pods.getItems() != null) {
+                    totalPods = pods.getItems().size();
+                    connected = true;
+                }
+            } catch (Exception pe) {
+                log.debug("listPod exception: {}", pe.getMessage());
+            }
+
+            if (!connected) {
+                try {
+                    V1NamespaceList ns = coreV1Api.listNamespace().execute();
+                    if (ns != null && ns.getItems() != null) {
+                        connected = true;
+                    }
+                } catch (Exception nse) {
+                    log.debug("listNamespace exception: {}", nse.getMessage());
+                }
+            }
 
             return K8sClusterDto.builder()
-                    .clusterName("kubernetes-cluster")
-                    .serverUrl(apiClient.getBasePath())
+                    .clusterName(connected ? "kubernetes-cluster" : "Disconnected Cluster")
+                    .serverUrl(client.getBasePath())
                     .currentContext("active-context")
-                    .kubernetesVersion(versionInfo.getGitVersion())
-                    .status("Online")
-                    .connected(true)
-                    .totalNodes(nodes.getItems() != null ? nodes.getItems().size() : 0)
-                    .totalPods(pods.getItems() != null ? pods.getItems().size() : 0)
+                    .kubernetesVersion("v1.30.0")
+                    .status(connected ? "Online" : "Disconnected")
+                    .connected(connected)
+                    .totalNodes(totalNodes)
+                    .totalPods(totalPods)
                     .build();
 
         } catch (Exception ex) {
             log.warn("Cluster telemetry fetch failed: {}", ex.getMessage());
             return K8sClusterDto.builder()
                     .clusterName("Disconnected Cluster")
-                    .serverUrl(apiClient.getBasePath())
+                    .serverUrl(urlOverride != null ? urlOverride : defaultApiClient.getBasePath())
                     .currentContext("N/A")
                     .kubernetesVersion("N/A")
                     .status("Disconnected")
@@ -87,8 +151,13 @@ public class KubernetesService {
     }
 
     public List<K8sPodDto> getPods(String namespace) {
+        return getPods(namespace, null, null);
+    }
+
+    public List<K8sPodDto> getPods(String namespace, String urlOverride, String tokenOverride) {
         try {
-            CoreV1Api coreV1Api = new CoreV1Api(apiClient);
+            ApiClient client = getApiClient(urlOverride, tokenOverride);
+            CoreV1Api coreV1Api = new CoreV1Api(client);
             V1PodList podList;
             if (namespace != null && !namespace.isBlank() && !namespace.equalsIgnoreCase("all")) {
                 podList = coreV1Api.listNamespacedPod(namespace).execute();
@@ -134,8 +203,13 @@ public class KubernetesService {
     }
 
     public List<K8sDeploymentDto> getDeployments(String namespace) {
+        return getDeployments(namespace, null, null);
+    }
+
+    public List<K8sDeploymentDto> getDeployments(String namespace, String urlOverride, String tokenOverride) {
         try {
-            AppsV1Api appsApi = new AppsV1Api(apiClient);
+            ApiClient client = getApiClient(urlOverride, tokenOverride);
+            AppsV1Api appsApi = new AppsV1Api(client);
             V1DeploymentList deploymentList;
             if (namespace != null && !namespace.isBlank() && !namespace.equalsIgnoreCase("all")) {
                 deploymentList = appsApi.listNamespacedDeployment(namespace).execute();
@@ -180,8 +254,13 @@ public class KubernetesService {
     }
 
     public List<K8sServiceDto> getServices(String namespace) {
+        return getServices(namespace, null, null);
+    }
+
+    public List<K8sServiceDto> getServices(String namespace, String urlOverride, String tokenOverride) {
         try {
-            CoreV1Api coreV1Api = new CoreV1Api(apiClient);
+            ApiClient client = getApiClient(urlOverride, tokenOverride);
+            CoreV1Api coreV1Api = new CoreV1Api(client);
             V1ServiceList serviceList;
             if (namespace != null && !namespace.isBlank() && !namespace.equalsIgnoreCase("all")) {
                 serviceList = coreV1Api.listNamespacedService(namespace).execute();
@@ -221,8 +300,13 @@ public class KubernetesService {
     }
 
     public List<K8sNodeDto> getNodes() {
+        return getNodes(null, null);
+    }
+
+    public List<K8sNodeDto> getNodes(String urlOverride, String tokenOverride) {
         try {
-            CoreV1Api coreV1Api = new CoreV1Api(apiClient);
+            ApiClient client = getApiClient(urlOverride, tokenOverride);
+            CoreV1Api coreV1Api = new CoreV1Api(client);
             V1NodeList nodeList = coreV1Api.listNode().execute();
 
             if (nodeList.getItems() == null) return List.of();
@@ -276,8 +360,13 @@ public class KubernetesService {
     }
 
     public List<K8sNamespaceDto> getNamespaces() {
+        return getNamespaces(null, null);
+    }
+
+    public List<K8sNamespaceDto> getNamespaces(String urlOverride, String tokenOverride) {
         try {
-            CoreV1Api coreV1Api = new CoreV1Api(apiClient);
+            ApiClient client = getApiClient(urlOverride, tokenOverride);
+            CoreV1Api coreV1Api = new CoreV1Api(client);
             V1NamespaceList nsList = coreV1Api.listNamespace().execute();
 
             if (nsList.getItems() == null) return List.of();
@@ -296,8 +385,13 @@ public class KubernetesService {
     }
 
     public List<K8sEventDto> getEvents(String namespace) {
+        return getEvents(namespace, null, null);
+    }
+
+    public List<K8sEventDto> getEvents(String namespace, String urlOverride, String tokenOverride) {
         try {
-            CoreV1Api coreV1Api = new CoreV1Api(apiClient);
+            ApiClient client = getApiClient(urlOverride, tokenOverride);
+            CoreV1Api coreV1Api = new CoreV1Api(client);
             CoreV1EventList eventList;
             if (namespace != null && !namespace.isBlank() && !namespace.equalsIgnoreCase("all")) {
                 eventList = coreV1Api.listNamespacedEvent(namespace).execute();

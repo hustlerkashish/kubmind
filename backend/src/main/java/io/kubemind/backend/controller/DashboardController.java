@@ -25,21 +25,26 @@ public class DashboardController {
     @GetMapping("/summary")
     public ResponseEntity<Map<String, Object>> getDashboardSummary(
             @RequestHeader(value = "X-Target-Github-Token", required = false) String ghToken,
-            @RequestHeader(value = "X-Target-Repos", required = false) String ghRepos
+            @RequestHeader(value = "X-Target-Repos", required = false) String ghRepos,
+            @RequestHeader(value = "X-Target-Prometheus-Url", required = false) String promUrl,
+            @RequestHeader(value = "X-Target-Grafana-Url", required = false) String grafanaUrl,
+            @RequestHeader(value = "X-Target-Grafana-Key", required = false) String grafanaKey,
+            @RequestHeader(value = "X-Target-K8s-Url", required = false) String k8sUrl,
+            @RequestHeader(value = "X-Target-K8s-Token", required = false) String k8sToken
     ) {
         Map<String, Object> response = new LinkedHashMap<>();
         try {
-            response.put("metrics", prometheusService.getDashboardSummary());
+            response.put("metrics", prometheusService.getDashboardSummary(promUrl));
 
             try {
-                response.put("cluster", kubernetesService.getClusterSummary());
+                response.put("cluster", kubernetesService.getClusterSummary(k8sUrl, k8sToken));
             } catch (Exception e) {
                 log.warn("Cluster summary unavailable: {}", e.getMessage());
                 response.put("cluster", Map.of("status", "unavailable", "connected", false));
             }
 
             response.put("cicd", gitHubService.getCiCdSummary(ghToken, ghRepos));
-            response.put("grafana", grafanaService.getSummary());
+            response.put("grafana", grafanaService.getSummary(grafanaUrl, grafanaKey));
 
             response.put("timestamp", System.currentTimeMillis());
             response.put("success", true);
@@ -75,18 +80,24 @@ public class DashboardController {
     }
 
     @GetMapping("/grafana/alerts")
-    public ResponseEntity<Map<String, Object>> getGrafanaAlerts() {
+    public ResponseEntity<Map<String, Object>> getGrafanaAlerts(
+            @RequestHeader(value = "X-Target-Grafana-Url", required = false) String grafanaUrl,
+            @RequestHeader(value = "X-Target-Grafana-Key", required = false) String grafanaKey
+    ) {
         return ResponseEntity.ok(Map.of(
                 "success", true,
-                "data", grafanaService.getAlerts()
+                "data", grafanaService.getAlerts(grafanaUrl, grafanaKey)
         ));
     }
 
     @GetMapping("/grafana/dashboards")
-    public ResponseEntity<Map<String, Object>> getGrafanaDashboards() {
+    public ResponseEntity<Map<String, Object>> getGrafanaDashboards(
+            @RequestHeader(value = "X-Target-Grafana-Url", required = false) String grafanaUrl,
+            @RequestHeader(value = "X-Target-Grafana-Key", required = false) String grafanaKey
+    ) {
         return ResponseEntity.ok(Map.of(
                 "success", true,
-                "data", grafanaService.getDashboards()
+                "data", grafanaService.getDashboards(grafanaUrl, grafanaKey)
         ));
     }
 }
