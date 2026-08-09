@@ -36,7 +36,7 @@ public class RecommendationService {
                     list = list.stream().filter(r -> r.getRecommendationType().equalsIgnoreCase(type)).collect(Collectors.toList());
                 }
                 if (namespace != null && !namespace.isBlank() && !namespace.equalsIgnoreCase("all")) {
-                    list = list.stream().filter(r -> r.getNamespace().equalsIgnoreCase(namespace)).collect(Collectors.toList());
+                    list = list.stream().filter(r -> r.getIncident() != null && r.getIncident().getNamespace() != null && r.getIncident().getNamespace().getNamespaceName().equalsIgnoreCase(namespace)).collect(Collectors.toList());
                 }
                 return list.stream().map(this::mapToDto).collect(Collectors.toList());
             }
@@ -52,7 +52,8 @@ public class RecommendationService {
         Recommendation recommendation = recommendationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Recommendation", "id", id));
 
-        recommendation.setApplied(true);
+        recommendation.setStatus("APPLIED");
+        recommendation.setAppliedAt(Instant.now());
         Recommendation saved = recommendationRepository.save(recommendation);
         log.info("Recommendation {} marked as applied", id);
         return mapToDto(saved);
@@ -90,12 +91,13 @@ public class RecommendationService {
     }
 
     private RecommendationDto mapToDto(Recommendation rec) {
+        boolean isApplied = "APPLIED".equalsIgnoreCase(rec.getStatus()) || rec.getAppliedAt() != null;
         return RecommendationDto.builder()
                 .id(rec.getId())
-                .incidentCode(rec.getIncidentCode())
-                .clusterName(rec.getClusterName())
-                .namespace(rec.getNamespace())
-                .podName(rec.getPodName())
+                .incidentCode(rec.getIncident() != null ? rec.getIncident().getIncidentCode() : null)
+                .clusterName(rec.getIncident() != null && rec.getIncident().getCluster() != null ? rec.getIncident().getCluster().getClusterName() : null)
+                .namespace(rec.getIncident() != null && rec.getIncident().getNamespace() != null ? rec.getIncident().getNamespace().getNamespaceName() : null)
+                .podName(rec.getIncident() != null && rec.getIncident().getPod() != null ? rec.getIncident().getPod().getPodName() : null)
                 .recommendationType(rec.getRecommendationType())
                 .actionSummary(rec.getActionSummary())
                 .suggestedCommand(rec.getSuggestedCommand())
@@ -103,7 +105,7 @@ public class RecommendationService {
                 .memoryAdjustment(rec.getMemoryAdjustment())
                 .replicaAdjustment(rec.getReplicaAdjustment())
                 .recurringCount(rec.getRecurringCount() != null ? rec.getRecurringCount() : 1)
-                .applied(rec.getApplied() != null ? rec.getApplied() : false)
+                .applied(isApplied)
                 .createdAt(rec.getCreatedAt() != null ? rec.getCreatedAt().toString() : Instant.now().toString())
                 .build();
     }

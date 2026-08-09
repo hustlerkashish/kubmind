@@ -37,7 +37,7 @@ public class IncidentService {
 
                 if (namespace != null && !namespace.isBlank() && !namespace.equalsIgnoreCase("all")) {
                     incidents = incidents.stream()
-                            .filter(i -> i.getNamespace().equalsIgnoreCase(namespace))
+                            .filter(i -> i.getNamespace() != null && i.getNamespace().getNamespaceName().equalsIgnoreCase(namespace))
                             .collect(Collectors.toList());
                 }
 
@@ -77,11 +77,11 @@ public class IncidentService {
         return IncidentDto.builder()
                 .id(incident.getId())
                 .incidentCode(incident.getIncidentCode())
-                .clusterName(incident.getClusterName())
-                .namespace(incident.getNamespace())
-                .podName(incident.getPodName())
-                .containerName(incident.getContainerName())
-                .reason(incident.getReason())
+                .clusterName(incident.getCluster() != null ? incident.getCluster().getClusterName() : null)
+                .namespace(incident.getNamespace() != null ? incident.getNamespace().getNamespaceName() : null)
+                .podName(incident.getPod() != null ? incident.getPod().getPodName() : null)
+                .containerName(incident.getPod() != null ? incident.getPod().getImageName() : null)
+                .reason(incident.getIncidentType() != null ? incident.getIncidentType().getName() : null)
                 .severity(incident.getSeverity())
                 .status(incident.getStatus())
                 .logSnippet(incident.getLogSnippet())

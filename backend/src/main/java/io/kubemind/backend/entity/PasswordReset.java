@@ -22,7 +22,7 @@ public class PasswordReset {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
@@ -34,6 +34,12 @@ public class PasswordReset {
 
     @Builder.Default
     private Boolean used = false;
+
+    @Column(length = 45)
+    private String ipAddress;
+
+    @Column(columnDefinition = "TEXT")
+    private String userAgent;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)

@@ -9,6 +9,7 @@ import java.util.UUID;
 
 @Repository
 public interface RecommendationRepository extends JpaRepository<Recommendation, UUID> {
-    List<Recommendation> findByApplied(Boolean applied);
-    List<Recommendation> findByRecommendationType(String recommendationType);
+    List<Recommendation> findByIncidentId(UUID incidentId);
+    List<Recommendation> findByStatus(String status);
+    List<Recommendation> findByApprovedById(UUID userId);
 }

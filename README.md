@@ -63,7 +63,7 @@ cp .env.example .env
 
 ### 2. Start Infrastructure with Docker Compose
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 This will launch PostgreSQL, Spring Boot Backend, Vite Frontend, Python AI Service, and Node MCP Server.
 

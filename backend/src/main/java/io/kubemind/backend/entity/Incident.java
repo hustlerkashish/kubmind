@@ -26,27 +26,32 @@ public class Incident {
     @Column(nullable = false, unique = true, length = 50)
     private String incidentCode;
 
-    @Column(nullable = false, length = 100)
-    private String clusterName;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "cluster_id", nullable = false)
+    private Cluster cluster;
 
-    @Column(nullable = false, length = 100)
-    private String namespace;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "namespace_id", nullable = false)
+    private Namespace namespace;
 
-    @Column(nullable = false, length = 150)
-    private String podName;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "pod_id", nullable = false)
+    private Pod pod;
 
-    @Column(length = 100)
-    private String containerName;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "incident_type_id", nullable = false)
+    private IncidentType incidentType;
 
-    @Column(nullable = false, length = 100)
-    private String reason; // CrashLoopBackOff, ImagePullBackOff, OOMKilled, FailedScheduling
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_to")
+    private User assignedTo;
 
-    @Column(nullable = false, length = 50)
-    private String severity; // CRITICAL, WARNING, INFO
+    @Column(nullable = false, length = 20)
+    private String severity; // INFO, LOW, MEDIUM, HIGH, CRITICAL
 
-    @Column(nullable = false, length = 50)
+    @Column(nullable = false, length = 20)
     @Builder.Default
-    private String status = "OPEN"; // OPEN, INVESTIGATING, RESOLVED
+    private String status = "OPEN"; // OPEN, INVESTIGATING, IN_PROGRESS, RESOLVED, CLOSED
 
     @Column(columnDefinition = "TEXT")
     private String logSnippet;
@@ -59,6 +64,10 @@ public class Incident {
     private Instant detectedAt;
 
     private Instant resolvedAt;
+
+    @CreatedDate
+    @Column(nullable = false, updatable = false)
+    private Instant createdAt;
 
     @LastModifiedDate
     @Column(nullable = false)

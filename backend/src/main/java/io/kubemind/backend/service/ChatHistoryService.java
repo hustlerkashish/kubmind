@@ -75,7 +75,7 @@ public class ChatHistoryService {
     private ChatMessageDto mapToMessageDto(ChatMessage message) {
         return ChatMessageDto.builder()
                 .id(message.getId())
-                .sessionId(message.getSessionId())
+                .sessionId(message.getSession() != null ? message.getSession().getId() : null)
                 .sender(message.getSender())
                 .content(message.getContent())
                 .toolsExecuted(message.getToolsExecuted())

@@ -12,5 +12,11 @@ import java.util.UUID;
 public interface IncidentRepository extends JpaRepository<Incident, UUID> {
     Optional<Incident> findByIncidentCode(String incidentCode);
     List<Incident> findByStatus(String status);
-    List<Incident> findByNamespace(String namespace);
+    List<Incident> findBySeverity(String severity);
+    List<Incident> findByClusterId(UUID clusterId);
+    List<Incident> findByNamespaceId(UUID namespaceId);
+    List<Incident> findByPodId(UUID podId);
+    List<Incident> findByAssignedToId(UUID userId);
+    List<Incident> findByStatusAndSeverity(String status, String severity);
+    List<Incident> findByClusterIdAndStatus(UUID clusterId, String status);
 }

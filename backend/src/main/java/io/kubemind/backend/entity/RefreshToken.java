@@ -22,7 +22,7 @@ public class RefreshToken {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
@@ -34,6 +34,20 @@ public class RefreshToken {
 
     @Builder.Default
     private Boolean revoked = false;
+
+    @Column(length = 45)
+    private String ipAddress;
+
+    @Column(length = 100)
+    private String browser;
+
+    @Column(length = 100)
+    private String operatingSystem;
+
+    @Column(length = 100)
+    private String deviceName;
+
+    private Instant lastUsedAt;
 
     @CreatedDate
     @Column(nullable = false, updatable = false)

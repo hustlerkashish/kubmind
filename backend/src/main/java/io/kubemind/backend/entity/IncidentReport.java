@@ -40,6 +40,13 @@ public class IncidentReport {
     @Column(columnDefinition = "TEXT")
     private String summaryJson;
 
+    @Column(name = "summary_json_b", columnDefinition = "jsonb")
+    private String summaryJsonB;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "generated_by")
+    private User generatedBy;
+
     @CreatedDate
     @Column(nullable = false, updatable = false)
     private Instant generatedAt;
