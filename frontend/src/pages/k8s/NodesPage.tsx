@@ -25,11 +25,11 @@ export function NodesPage() {
       {isLoading ? (
         <Loader text="Querying Kubernetes nodes from backend SDK..." />
       ) : isError ? (
-        <Card className="border-rose-500/30 bg-rose-950/20 text-rose-300 p-6 flex items-center gap-3">
-          <AlertTriangle className="h-6 w-6 text-rose-400 shrink-0" />
+        <Card className="border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-300 p-6 flex items-center gap-3">
+          <AlertTriangle className="h-6 w-6 text-rose-500 shrink-0" />
           <div>
             <h4 className="font-semibold text-sm">Cluster Nodes Connection Warning</h4>
-            <p className="text-xs text-rose-200 mt-1">Standby node specs active.</p>
+            <p className="text-xs text-rose-600 dark:text-rose-200 mt-1">Standby node specs active.</p>
           </div>
         </Card>
       ) : (
@@ -51,29 +51,29 @@ export function NodesPage() {
                 {nodes && nodes.length > 0 ? (
                   nodes.map((node, i) => (
                     <TableRow key={i}>
-                      <TableCell className="font-mono text-xs font-semibold text-slate-100">
+                      <TableCell className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-100">
                         <div className="flex items-center gap-2">
-                          <Server className="h-4 w-4 text-cyan-400 shrink-0" />
+                          <Server className="h-4 w-4 text-cyan-500 shrink-0" />
                           <span>{node.name}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-purple-400 font-semibold">{node.role}</TableCell>
+                      <TableCell className="font-mono text-xs text-purple-600 dark:text-purple-400 font-semibold">{node.role}</TableCell>
                       <TableCell>
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold font-mono ${
                             node.status === 'Ready'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                              ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30'
+                              : 'bg-rose-500/20 text-rose-600 dark:text-rose-300 border border-rose-500/30'
                           }`}
                         >
                           <CheckCircle2 className="h-3 w-3" />
                           {node.status}
                         </span>
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-slate-300">{node.kubeletVersion}</TableCell>
-                      <TableCell className="font-mono text-xs text-slate-400">{node.internalIP}</TableCell>
-                      <TableCell className="font-mono text-xs text-amber-400 font-semibold">{node.cpuCapacity}</TableCell>
-                      <TableCell className="font-mono text-xs text-purple-400 font-semibold">{node.memoryCapacity}</TableCell>
+                      <TableCell className="font-mono text-xs text-slate-700 dark:text-slate-300">{node.kubeletVersion}</TableCell>
+                      <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">{node.internalIP}</TableCell>
+                      <TableCell className="font-mono text-xs text-amber-600 dark:text-amber-400 font-semibold">{node.cpuCapacity}</TableCell>
+                      <TableCell className="font-mono text-xs text-purple-600 dark:text-purple-400 font-semibold">{node.memoryCapacity}</TableCell>
                     </TableRow>
                   ))
                 ) : (

@@ -22,7 +22,7 @@ export function EventsPage() {
             <select
               value={selectedNamespace}
               onChange={(e) => setSelectedNamespace(e.target.value)}
-              className="rounded-lg border border-slate-800 bg-slate-900 py-1.5 px-3 text-xs text-slate-200 focus:border-blue-500 focus:outline-none font-mono"
+              className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1.5 px-3 text-xs text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none font-mono"
             >
               <option value="all">Namespace: All Namespaces</option>
               {namespaces?.map((ns) => (
@@ -43,11 +43,11 @@ export function EventsPage() {
       {isLoading ? (
         <Loader text="Streaming live events from Kubernetes CoreV1Api..." />
       ) : isError ? (
-        <Card className="border-rose-500/30 bg-rose-950/20 text-rose-300 p-6 flex items-center gap-3">
-          <AlertTriangle className="h-6 w-6 text-rose-400 shrink-0" />
+        <Card className="border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-300 p-6 flex items-center gap-3">
+          <AlertTriangle className="h-6 w-6 text-rose-500 shrink-0" />
           <div>
             <h4 className="font-semibold text-sm">Cluster Events Stream Error</h4>
-            <p className="text-xs text-rose-200 mt-1">Standby events feed active.</p>
+            <p className="text-xs text-rose-600 dark:text-rose-200 mt-1">Standby events feed active.</p>
           </div>
         </Card>
       ) : (
@@ -71,25 +71,25 @@ export function EventsPage() {
                     <TableRow key={i}>
                       <TableCell>
                         {evt.type === 'Warning' ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold font-mono bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                            <AlertCircle className="h-3 w-3 text-rose-400" />
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold font-mono bg-rose-500/20 text-rose-600 dark:text-rose-300 border border-rose-500/30">
+                            <AlertCircle className="h-3 w-3 text-rose-500" />
                             Warning
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold font-mono bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                            <Info className="h-3 w-3 text-blue-400" />
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold font-mono bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-500/30">
+                            <Info className="h-3 w-3 text-blue-500" />
                             Normal
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="font-mono text-xs font-semibold text-slate-200">{evt.reason}</TableCell>
-                      <TableCell className="font-mono text-xs text-cyan-400 font-medium">{evt.involvedObject}</TableCell>
-                      <TableCell className="font-mono text-xs text-slate-400">{evt.namespace}</TableCell>
-                      <TableCell className="text-xs text-slate-300 font-mono leading-relaxed truncate max-w-sm">
+                      <TableCell className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">{evt.reason}</TableCell>
+                      <TableCell className="font-mono text-xs text-cyan-600 dark:text-cyan-400 font-medium">{evt.involvedObject}</TableCell>
+                      <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">{evt.namespace}</TableCell>
+                      <TableCell className="text-xs text-slate-700 dark:text-slate-300 font-mono leading-relaxed truncate max-w-sm">
                         {evt.message}
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-amber-400 font-semibold">{evt.count}</TableCell>
-                      <TableCell className="font-mono text-xs text-slate-400 whitespace-nowrap">{evt.lastTimestamp}</TableCell>
+                      <TableCell className="font-mono text-xs text-amber-600 dark:text-amber-400 font-semibold">{evt.count}</TableCell>
+                      <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{evt.lastTimestamp}</TableCell>
                     </TableRow>
                   ))
                 ) : (

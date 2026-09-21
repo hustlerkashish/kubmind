@@ -7,8 +7,8 @@ export function Breadcrumb() {
   const pathnames = location.pathname.split('/').filter((x) => x);
 
   return (
-    <nav className="flex items-center space-x-2 text-xs text-slate-400">
-      <Link to="/" className="flex items-center gap-1 hover:text-slate-200 transition-colors">
+    <nav className="flex items-center space-x-2 text-xs text-slate-500 dark:text-slate-400">
+      <Link to="/" className="flex items-center gap-1 hover:text-slate-900 dark:hover:text-slate-200 transition-colors">
         <Home className="h-3.5 w-3.5" />
         <span>Cluster Home</span>
       </Link>
@@ -20,11 +20,11 @@ export function Breadcrumb() {
 
         return (
           <React.Fragment key={to}>
-            <ChevronRight className="h-3 w-3 text-slate-600" />
+            <ChevronRight className="h-3 w-3 text-slate-400 dark:text-slate-600" />
             {isLast ? (
-              <span className="font-medium text-slate-200 capitalize">{formattedName}</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200 capitalize">{formattedName}</span>
             ) : (
-              <Link to={to} className="hover:text-slate-200 transition-colors capitalize">
+              <Link to={to} className="hover:text-slate-900 dark:hover:text-slate-200 transition-colors capitalize">
                 {formattedName}
               </Link>
             )}

@@ -113,13 +113,13 @@ export function CopilotChatPage() {
         <div className="space-y-3">
           <button
             onClick={handleCreateNewSession}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-blue-500/30 bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 text-xs font-semibold font-mono transition-all shadow-sm"
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 text-xs font-semibold font-mono transition-all shadow-sm"
           >
             <Plus className="h-4 w-4" />
             <span>+ New Chat Session</span>
           </button>
 
-          <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 space-y-1 max-h-[500px] overflow-y-auto">
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 space-y-1 max-h-[500px] overflow-y-auto shadow-sm">
             <p className="text-[10px] uppercase font-mono font-bold text-slate-500 px-2 py-1">
               Recent Conversations ({sessions.length})
             </p>
@@ -130,8 +130,8 @@ export function CopilotChatPage() {
                 onClick={() => setActiveSessionId(s.id)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors text-left ${
                   activeSessionId === s.id
-                    ? 'bg-slate-800 text-cyan-300 border border-slate-700 font-semibold'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                    ? 'bg-slate-100 dark:bg-slate-800 text-cyan-700 dark:text-cyan-300 border border-slate-200 dark:border-slate-700 font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60'
                 }`}
               >
                 <MessageSquare className="h-3.5 w-3.5 shrink-0 text-slate-400" />
@@ -144,17 +144,17 @@ export function CopilotChatPage() {
         {/* Right Main Chat Interface Container */}
         <div className="lg:col-span-3 space-y-4">
           {/* Target Pod Context Controls Bar */}
-          <Card className="p-3 bg-slate-950 border-slate-800">
+          <Card className="p-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm">
             <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                <div className="p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-600 dark:text-cyan-400">
                   <Bot className="h-4 w-4" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-slate-100">Live Diagnostic Scope</p>
-                  <p className="text-[10px] text-slate-400 font-mono">
-                    Pod: <code className="text-cyan-400">{targetPod}</code> • Namespace:{' '}
-                    <code className="text-purple-400">{targetNamespace}</code>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-100">Live Diagnostic Scope</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                    Pod: <code className="text-cyan-600 dark:text-cyan-400 font-semibold">{targetPod}</code> • Namespace:{' '}
+                    <code className="text-purple-600 dark:text-purple-400 font-semibold">{targetNamespace}</code>
                   </p>
                 </div>
               </div>
@@ -165,21 +165,21 @@ export function CopilotChatPage() {
                   value={targetPod}
                   onChange={(e) => setTargetPod(e.target.value)}
                   placeholder="Target Pod..."
-                  className="rounded-lg border border-slate-800 bg-slate-900 py-1 px-2.5 text-xs text-slate-200 focus:border-blue-500 focus:outline-none font-mono w-44"
+                  className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 py-1 px-2.5 text-xs text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none font-mono w-44"
                 />
                 <input
                   type="text"
                   value={targetNamespace}
                   onChange={(e) => setTargetNamespace(e.target.value)}
                   placeholder="Namespace..."
-                  className="rounded-lg border border-slate-800 bg-slate-900 py-1 px-2.5 text-xs text-slate-200 focus:border-blue-500 focus:outline-none font-mono w-24"
+                  className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 py-1 px-2.5 text-xs text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none font-mono w-24"
                 />
               </div>
             </div>
           </Card>
 
           {/* Conversation Window */}
-          <div className="rounded-xl border border-slate-800 bg-slate-950 p-6 shadow-2xl min-h-[420px] max-h-[520px] overflow-y-auto space-y-6">
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm dark:shadow-2xl min-h-[420px] max-h-[520px] overflow-y-auto space-y-6">
             {messages.map((msg) => (
               <div
                 key={msg.id}
@@ -189,7 +189,7 @@ export function CopilotChatPage() {
               >
                 {/* Sender Avatar */}
                 <div
-                  className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 shadow-lg ${
+                  className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 shadow-md ${
                     msg.sender === 'user'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gradient-to-tr from-cyan-600 to-blue-600 text-white'
@@ -203,28 +203,28 @@ export function CopilotChatPage() {
                   <div
                     className={`p-4 rounded-xl border text-xs leading-relaxed ${
                       msg.sender === 'user'
-                        ? 'bg-blue-600/20 border-blue-500/30 text-slate-100 font-medium'
-                        : 'bg-slate-900/80 border-slate-800 text-slate-200'
+                        ? 'bg-blue-600/10 border-blue-500/30 text-slate-800 dark:text-slate-100 font-medium'
+                        : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200'
                     }`}
                   >
                     <MarkdownMessage content={msg.content} />
 
                     {/* Executed MCP Tools Badge & Execution Trace Chips */}
                     {msg.responseMeta && (
-                      <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-[10px] font-mono">
+                      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[10px] font-mono">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-slate-400">MCP Tools:</span>
+                          <span className="text-slate-500 dark:text-slate-400">MCP Tools:</span>
                           {msg.responseMeta.toolsExecuted.map((t, idx) => (
                             <span
                               key={idx}
-                              className="px-2 py-0.5 rounded bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 font-bold"
+                              className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20 font-bold"
                             >
                               {t}
                             </span>
                           ))}
                         </div>
 
-                        <span className="text-emerald-400 font-bold bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-500/20">
+                        <span className="text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                           {msg.responseMeta.diagnosis.confidenceScore}% Match
                         </span>
                       </div>
@@ -236,8 +236,8 @@ export function CopilotChatPage() {
             ))}
 
             {isLoading && (
-              <div className="flex items-center gap-3 p-4 rounded-xl border border-cyan-500/20 bg-cyan-950/20 text-xs text-cyan-300 animate-pulse font-mono">
-                <RefreshCw className="h-4 w-4 animate-spin text-cyan-400" />
+              <div className="flex items-center gap-3 p-4 rounded-xl border border-cyan-500/30 bg-cyan-500/5 text-xs text-cyan-700 dark:text-cyan-300 animate-pulse font-mono">
+                <RefreshCw className="h-4 w-4 animate-spin text-cyan-500" />
                 <span>Executing LangGraph StateGraph (MCP Tool Ingestion → Stderr Analysis → RCA Synthesis)...</span>
               </div>
             )}
@@ -247,33 +247,33 @@ export function CopilotChatPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
             <button
               onClick={() => handleSendMessage("Why did my deployment fail?")}
-              className="p-2.5 rounded-xl border border-slate-800 bg-slate-900/80 hover:border-rose-500/40 hover:bg-slate-800 text-slate-300 text-left transition-all flex items-center gap-2"
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-rose-500/40 hover:bg-rose-500/5 text-slate-700 dark:text-slate-300 text-left transition-all flex items-center gap-2 shadow-sm"
             >
-              <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" />
+              <AlertTriangle className="h-4 w-4 text-rose-500 shrink-0" />
               <span>Why did my deployment fail?</span>
             </button>
 
             <button
               onClick={() => handleSendMessage("Which pod is consuming the most memory?")}
-              className="p-2.5 rounded-xl border border-slate-800 bg-slate-900/80 hover:border-amber-500/40 hover:bg-slate-800 text-slate-300 text-left transition-all flex items-center gap-2"
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-amber-500/40 hover:bg-amber-500/5 text-slate-700 dark:text-slate-300 text-left transition-all flex items-center gap-2 shadow-sm"
             >
-              <Zap className="h-4 w-4 text-amber-400 shrink-0" />
+              <Zap className="h-4 w-4 text-amber-500 shrink-0" />
               <span>Which pod is consuming the most memory?</span>
             </button>
 
             <button
               onClick={() => handleSendMessage("Show recent incidents.")}
-              className="p-2.5 rounded-xl border border-slate-800 bg-slate-900/80 hover:border-indigo-500/40 hover:bg-slate-800 text-slate-300 text-left transition-all flex items-center gap-2"
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-500/40 hover:bg-indigo-500/5 text-slate-700 dark:text-slate-300 text-left transition-all flex items-center gap-2 shadow-sm"
             >
-              <Layers className="h-4 w-4 text-indigo-400 shrink-0" />
+              <Layers className="h-4 w-4 text-indigo-500 shrink-0" />
               <span>Show recent incidents.</span>
             </button>
 
             <button
               onClick={() => handleSendMessage("Suggest a fix for CrashLoopBackOff.")}
-              className="p-2.5 rounded-xl border border-slate-800 bg-slate-900/80 hover:border-cyan-500/40 hover:bg-slate-800 text-slate-300 text-left transition-all flex items-center gap-2"
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-cyan-500/40 hover:bg-cyan-500/5 text-slate-700 dark:text-slate-300 text-left transition-all flex items-center gap-2 shadow-sm"
             >
-              <Sparkles className="h-4 w-4 text-cyan-400 shrink-0" />
+              <Sparkles className="h-4 w-4 text-cyan-500 shrink-0" />
               <span>Suggest a fix for CrashLoopBackOff.</span>
             </button>
           </div>
@@ -286,7 +286,7 @@ export function CopilotChatPage() {
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
               placeholder="Ask KubeMind AI Copilot to analyze crash logs, diagnose failure modes, or generate fixes..."
-              className="w-full rounded-xl border border-slate-800 bg-slate-950 py-3.5 pl-4 pr-12 text-xs text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none shadow-xl font-sans"
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-3.5 pl-4 pr-12 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none shadow-sm dark:shadow-xl font-sans"
             />
             <button
               onClick={() => handleSendMessage()}

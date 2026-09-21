@@ -61,19 +61,7 @@ apiClient.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Handle 403 Forbidden — JWT missing, expired, or invalid → redirect to login
-    if (error.response && error.response.status === 403) {
-      const isAuthEndpoint =
-        originalRequest.url?.includes('/auth/login') ||
-        originalRequest.url?.includes('/auth/refresh');
-      if (!isAuthEndpoint) {
-        localStorage.removeItem('kubemind_access_token');
-        localStorage.removeItem('kubemind_refresh_token');
-        localStorage.removeItem('kubemind_user');
-        window.location.href = '/login';
-        return Promise.reject(error);
-      }
-    }
+
 
     if (error.response && error.response.status === 401 && !originalRequest._retry) {
       if (originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/refresh')) {

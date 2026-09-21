@@ -52,7 +52,7 @@ export function ProfilePage() {
     : [user?.role || 'ROLE_DEVELOPER'];
 
   return (
-    <div>
+    <div className="space-y-6 pb-12">
       <PageHeader
         title="Operator Profile"
         description="Manage SRE operator identity, permissions, and security authentication credentials"
@@ -60,34 +60,34 @@ export function ProfilePage() {
 
       <div className="max-w-3xl space-y-6">
         {/* Profile Identity Card */}
-        <Card>
+        <Card className="rounded-2xl border border-slate-200/90 dark:border-slate-800/80 bg-white dark:bg-[#0c121e] shadow-sm">
           <CardHeader>
             <div className="flex items-center gap-4">
-              <div className="h-14 w-14 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold text-lg shadow-inner">
+              <div className="h-14 w-14 rounded-2xl bg-blue-600/10 border border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-xl shadow-inner">
                 {user?.username?.charAt(0).toUpperCase() || 'O'}
               </div>
               <div>
-                <CardTitle>{user?.fullName || user?.username}</CardTitle>
-                <CardDescription>{user?.email}</CardDescription>
+                <CardTitle className="text-slate-900 dark:text-white text-lg font-bold">{user?.fullName || user?.username}</CardTitle>
+                <CardDescription className="text-slate-500 dark:text-slate-400">{user?.email}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4 pt-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="p-3 rounded-lg border border-slate-800 bg-slate-950">
-                <p className="text-[10px] uppercase text-slate-500 font-mono">Assigned Role</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <Shield className="h-4 w-4 text-purple-400" />
-                  <span className="text-xs font-semibold text-purple-300 font-mono">
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60">
+                <p className="text-[10px] uppercase text-slate-500 dark:text-slate-400 font-mono font-semibold">Assigned Role</p>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <Shield className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                  <span className="text-xs font-semibold text-purple-700 dark:text-purple-300 font-mono">
                     {rolesList.join(', ')}
                   </span>
                 </div>
               </div>
-              <div className="p-3 rounded-lg border border-slate-800 bg-slate-950">
-                <p className="text-[10px] uppercase text-slate-500 font-mono">Username Handle</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <User className="h-4 w-4 text-blue-400" />
-                  <span className="text-xs font-semibold text-slate-200 font-mono">@{user?.username}</span>
+              <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60">
+                <p className="text-[10px] uppercase text-slate-500 dark:text-slate-400 font-mono font-semibold">Username Handle</p>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <User className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 font-mono">@{user?.username}</span>
                 </div>
               </div>
             </div>
@@ -95,50 +95,50 @@ export function ProfilePage() {
         </Card>
 
         {/* Edit Profile Form */}
-        <Card>
+        <Card className="rounded-2xl border border-slate-200/90 dark:border-slate-800/80 bg-white dark:bg-[#0c121e] shadow-sm">
           <CardHeader>
-            <CardTitle>Security & Identity Settings</CardTitle>
-            <CardDescription>Update display name or reset authentication password</CardDescription>
+            <CardTitle className="text-slate-900 dark:text-white font-bold">Security & Identity Settings</CardTitle>
+            <CardDescription className="text-slate-500 dark:text-slate-400">Update display name or reset authentication password</CardDescription>
           </CardHeader>
           <CardContent>
             {apiError && (
-              <div className="mb-4 flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-950/30 p-3 text-xs text-rose-300">
-                <ShieldAlert className="h-4 w-4 shrink-0 text-rose-400" />
+              <div className="mb-4 flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-300">
+                <ShieldAlert className="h-4 w-4 shrink-0 text-rose-500" />
                 <span>{apiError}</span>
               </div>
             )}
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Full Name</label>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 font-mono">Full Name</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                  <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <input
                     type="text"
                     {...register('fullName')}
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950 py-2 pl-9 pr-3 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 py-2 pl-9 pr-3 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-sans"
                   />
                 </div>
                 {errors.fullName && (
-                  <p className="text-[11px] text-rose-400 mt-1">{errors.fullName.message}</p>
+                  <p className="text-[11px] text-rose-500 mt-1">{errors.fullName.message}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 font-mono">
                   New Password (Optional)
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <input
                     type="password"
                     {...register('newPassword')}
                     placeholder="Leave blank to keep existing password"
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950 py-2 pl-9 pr-3 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 py-2 pl-9 pr-3 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 font-sans"
                   />
                 </div>
                 {errors.newPassword && (
-                  <p className="text-[11px] text-rose-400 mt-1">{errors.newPassword.message}</p>
+                  <p className="text-[11px] text-rose-500 mt-1">{errors.newPassword.message}</p>
                 )}
               </div>
 

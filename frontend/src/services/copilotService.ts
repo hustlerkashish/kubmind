@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { apiClient } from './apiClient';
 
-const AI_SERVICE_URL = 'http://localhost:8000/api/v1';
+const AI_SERVICE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000/api/v1';
 
 export interface ChatSession {
   id: string;

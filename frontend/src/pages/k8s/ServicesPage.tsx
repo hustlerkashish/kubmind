@@ -22,7 +22,7 @@ export function ServicesPage() {
             <select
               value={selectedNamespace}
               onChange={(e) => setSelectedNamespace(e.target.value)}
-              className="rounded-lg border border-slate-800 bg-slate-900 py-1.5 px-3 text-xs text-slate-200 focus:border-blue-500 focus:outline-none font-mono"
+              className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 py-1.5 px-3 text-xs text-slate-800 dark:text-slate-200 focus:border-blue-500 focus:outline-none font-mono"
             >
               <option value="all">Namespace: All Namespaces</option>
               {namespaces?.map((ns) => (
@@ -43,11 +43,11 @@ export function ServicesPage() {
       {isLoading ? (
         <Loader text="Streaming live Kubernetes services from backend API..." />
       ) : isError ? (
-        <Card className="border-rose-500/30 bg-rose-950/20 text-rose-300 p-6 flex items-center gap-3">
-          <AlertTriangle className="h-6 w-6 text-rose-400 shrink-0" />
+        <Card className="border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-300 p-6 flex items-center gap-3">
+          <AlertTriangle className="h-6 w-6 text-rose-500 shrink-0" />
           <div>
             <h4 className="font-semibold text-sm">Services Routing Warning</h4>
-            <p className="text-xs text-rose-200 mt-1">Standby service definitions displayed.</p>
+            <p className="text-xs text-rose-600 dark:text-rose-200 mt-1">Standby service definitions displayed.</p>
           </div>
         </Card>
       ) : (
@@ -68,21 +68,21 @@ export function ServicesPage() {
                 {services && services.length > 0 ? (
                   services.map((svc, i) => (
                     <TableRow key={i}>
-                      <TableCell className="font-mono text-xs font-semibold text-slate-100">
+                      <TableCell className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-100">
                         <div className="flex items-center gap-2">
-                          <Network className="h-4 w-4 text-emerald-400 shrink-0" />
+                          <Network className="h-4 w-4 text-emerald-500 shrink-0" />
                           <span>{svc.name}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-slate-400">{svc.namespace}</TableCell>
+                      <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">{svc.namespace}</TableCell>
                       <TableCell>
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold font-mono bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold font-mono bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-500/30">
                           {svc.type}
                         </span>
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-slate-300">{svc.clusterIP}</TableCell>
-                      <TableCell className="font-mono text-xs text-cyan-400 font-semibold">{svc.ports}</TableCell>
-                      <TableCell className="font-mono text-xs text-slate-400">{svc.creationTimestamp}</TableCell>
+                      <TableCell className="font-mono text-xs text-slate-700 dark:text-slate-300">{svc.clusterIP}</TableCell>
+                      <TableCell className="font-mono text-xs text-cyan-600 dark:text-cyan-400 font-semibold">{svc.ports}</TableCell>
+                      <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">{svc.creationTimestamp}</TableCell>
                     </TableRow>
                   ))
                 ) : (

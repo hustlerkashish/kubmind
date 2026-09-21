@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { ChartDataPoint } from '@/services/mockTelemetryService';
-import { Activity } from 'lucide-react';
+import { Zap, Activity } from 'lucide-react';
 
 interface MemoryTrendChartProps {
   data?: ChartDataPoint[];
 }
 
-export function MemoryTrendChart({ data }: MemoryTrendChartProps) {
+export function MemoryTrendChart({ data = [] }: MemoryTrendChartProps) {
+  const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h'>('24h');
   const [hoveredPoint, setHoveredPoint] = useState<ChartDataPoint | null>(null);
 
   const width = 500;
@@ -16,23 +17,21 @@ export function MemoryTrendChart({ data }: MemoryTrendChartProps) {
   const maxValue = 100;
   const minValue = 0;
 
-  const baseVal = Array.isArray(data) && data.length > 0 && typeof data[0].value === 'number'
-    ? data[0].value
-    : 58.1;
+  const hasRealData = Array.isArray(data) && data.length > 1;
 
-  const safeData: ChartDataPoint[] = Array.isArray(data) && data.length > 1
+  const chartPoints: ChartDataPoint[] = hasRealData
     ? data
     : [
-        { timestamp: '00:00', value: Math.max(10, Math.min(95, baseVal - 4)) },
-        { timestamp: '04:00', value: Math.max(10, Math.min(95, baseVal + 2)) },
-        { timestamp: '08:00', value: Math.max(10, Math.min(95, baseVal - 6)) },
-        { timestamp: '12:00', value: Math.max(10, Math.min(95, baseVal + 8)) },
-        { timestamp: '16:00', value: Math.max(10, Math.min(95, baseVal)) },
-        { timestamp: '20:00', value: Math.max(10, Math.min(95, baseVal + 3)) },
+        { timestamp: '00:00', value: 0 },
+        { timestamp: '04:00', value: 0 },
+        { timestamp: '08:00', value: 0 },
+        { timestamp: '12:00', value: 0 },
+        { timestamp: '16:00', value: 0 },
+        { timestamp: '20:00', value: 0 },
       ];
 
-  const points = safeData.map((d, index) => {
-    const x = padding + (index / (safeData.length - 1)) * (width - padding * 2);
+  const points = chartPoints.map((d, index) => {
+    const x = padding + (index / (chartPoints.length - 1)) * (width - padding * 2);
     const y = height - padding - ((d.value - minValue) / (maxValue - minValue)) * (height - padding * 2);
     return { x, y, ...d };
   });
@@ -46,69 +45,96 @@ export function MemoryTrendChart({ data }: MemoryTrendChartProps) {
   } Z`;
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 backdrop-blur-md relative overflow-hidden shadow-sm">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-500">
-            <Activity className="h-4 w-4" />
+    <div className="rounded-2xl border border-slate-200/70 dark:border-slate-800/70 bg-white/85 dark:bg-[#0c121e]/85 backdrop-blur-xl p-4.5 shadow-sm relative overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-500 shrink-0">
+            <Zap className="h-4 w-4" />
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Memory Allocation Trend</h3>
-            <p className="text-[11px] text-slate-500">RAM pressure and container RSS limits</p>
+          <div className="min-w-0">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+              Memory Allocation
+            </h3>
+            <p className="text-[10px] text-slate-500 truncate">
+              {hasRealData ? 'Live PromQL metrics' : 'Prometheus stream offline'}
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1 text-[11px] text-slate-500 font-mono">
-            <span className="h-2 w-2 rounded-full bg-purple-500" /> Prometheus Stream
-          </span>
+        {/* Time-Window Switchers */}
+        <div className="flex items-center gap-0.5 bg-slate-100 dark:bg-slate-900/80 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-800 shrink-0">
+          {(['1h', '6h', '24h'] as const).map((r) => (
+            <button
+              key={r}
+              onClick={() => setTimeRange(r)}
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-medium transition-all ${
+                timeRange === r
+                  ? 'bg-white dark:bg-[#0c121e] text-purple-600 dark:text-purple-400 shadow-xs border border-slate-200/80 dark:border-slate-700 font-bold'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              {r}
+            </button>
+          ))}
         </div>
       </div>
 
       <div className="relative w-full h-[180px]">
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
-          <defs>
-            <linearGradient id="memoryGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#a855f7" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="#a855f7" stopOpacity="0.0" />
-            </linearGradient>
-          </defs>
+        {hasRealData ? (
+          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+            <defs>
+              <linearGradient id="memGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#a855f7" stopOpacity="0.45" />
+                <stop offset="100%" stopColor="#a855f7" stopOpacity="0.0" />
+              </linearGradient>
+            </defs>
 
-          {/* Grid lines */}
-          <line x1={padding} y1={padding} x2={width - padding} y2={padding} stroke="var(--chart-grid)" strokeDasharray="3 3" />
-          <line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="var(--chart-grid)" strokeDasharray="3 3" />
-          <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="var(--chart-grid)" />
+            {/* Grid lines */}
+            <line x1={padding} y1={padding} x2={width - padding} y2={padding} stroke="var(--chart-grid)" strokeDasharray="3 3" />
+            <line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="var(--chart-grid)" strokeDasharray="3 3" />
+            <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="var(--chart-grid)" />
 
-          {/* Area Fill */}
-          <path d={areaD} fill="url(#memoryGradient)" />
+            {/* Area Fill */}
+            <path d={areaD} fill="url(#memGradient)" />
 
-          {/* Line Path */}
-          <path d={pathD} fill="none" stroke="#a855f7" strokeWidth="2.5" strokeLinecap="round" />
+            {/* Smooth Line */}
+            <path d={pathD} fill="none" stroke="#a855f7" strokeWidth="2.5" strokeLinecap="round" />
 
-          {/* Circles */}
-          {points.map((p, idx) => (
-            <circle
-              key={idx}
-              cx={p.x}
-              cy={p.y}
-              r={hoveredPoint?.timestamp === p.timestamp ? 5 : 3}
-              className="fill-purple-500 stroke-white dark:stroke-slate-900 stroke-2 cursor-pointer transition-all"
-              onMouseEnter={() => setHoveredPoint(p)}
-              onMouseLeave={() => setHoveredPoint(null)}
-            />
-          ))}
-        </svg>
+            {/* Interactive Data Points */}
+            {points.map((p, idx) => (
+              <circle
+                key={idx}
+                cx={p.x}
+                cy={p.y}
+                r={hoveredPoint?.timestamp === p.timestamp ? 5 : 3.5}
+                className="fill-purple-500 stroke-white dark:stroke-[#0c121e] stroke-2 cursor-pointer transition-all hover:scale-125"
+                onMouseEnter={() => setHoveredPoint(p)}
+                onMouseLeave={() => setHoveredPoint(null)}
+              />
+            ))}
+          </svg>
+        ) : (
+          <div className="h-full flex flex-col items-center justify-center text-center p-4 border border-dashed border-slate-200 dark:border-slate-800/80 rounded-xl">
+            <Activity className="h-6 w-6 text-slate-400 mb-2 opacity-50" />
+            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">No Live Memory Stream</p>
+            <p className="text-[10px] text-slate-500 mt-0.5 max-w-xs">
+              Configure your Prometheus URL in Settings to stream container RSS memory usage.
+            </p>
+          </div>
+        )}
 
+        {/* Hover Tooltip Overlay */}
         {hoveredPoint && (
-          <div className="absolute top-2 right-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-2 rounded-lg text-xs font-mono shadow-md pointer-events-none">
-            <span className="text-slate-500">{hoveredPoint.timestamp}</span> :{' '}
+          <div className="absolute top-2 right-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2 rounded-xl text-xs font-mono shadow-lg pointer-events-none animate-in fade-in duration-150">
+            <span className="text-slate-500 font-medium">{hoveredPoint.timestamp}</span> :{' '}
             <span className="text-purple-500 font-bold">{Math.round(hoveredPoint.value)}% RAM</span>
           </div>
         )}
       </div>
 
-      <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono mt-2">
-        {safeData.map((d, i) => (
+      <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono mt-2 px-1">
+        {chartPoints.map((d, i) => (
           <span key={i}>{d.timestamp}</span>
         ))}
       </div>

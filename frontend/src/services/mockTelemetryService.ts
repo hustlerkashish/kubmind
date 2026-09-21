@@ -4,7 +4,7 @@ export interface MetricCardData {
   subtext: string;
   change: string;
   isPositive: boolean;
-  type: 'clusters' | 'running_pods' | 'failed_pods' | 'deployments' | 'nodes' | 'cpu' | 'memory' | 'incidents';
+  type: 'clusters' | 'running_pods' | 'failed_pods' | 'deployments' | 'nodes' | 'cpu' | 'memory' | 'network' | 'disk' | 'incidents';
 }
 
 export interface ChartDataPoint {

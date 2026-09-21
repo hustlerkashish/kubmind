@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  RefreshCw, Bot,
+  RotateCw, Sparkles,
   CheckCircle, XCircle, Clock, GitBranch, Bell, AlertTriangle,
   AlertCircle
 } from 'lucide-react';
@@ -16,6 +16,8 @@ import { MemoryTrendChart } from '@/components/dashboard/MemoryTrendChart';
 import { IncidentTrendChart } from '@/components/dashboard/IncidentTrendChart';
 import { ClusterHealthWidget } from '@/components/dashboard/ClusterHealthWidget';
 import { RecentIncidentsTable } from '@/components/dashboard/RecentIncidentsTable';
+import { LiveAlertBanner } from '@/components/dashboard/LiveAlertBanner';
+import { useIncidents } from '@/hooks/useIncidents';
 import { useToast } from '@/context/ToastContext';
 import { apiClient } from '@/services/apiClient';
 import { prometheusApi } from '@/services/prometheusService';
@@ -43,7 +45,7 @@ function ConnectionBadge({ connected }: { connected: boolean }) {
   return (
     <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium ${
       connected
-        ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
         : 'bg-slate-500/10 text-slate-500 border border-slate-500/20'
     }`}>
       <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
@@ -98,7 +100,9 @@ function GrafanaAlertRow({ alert }: { alert: any }) {
         <span className="text-sm text-slate-800 dark:text-slate-200">{alert.name}</span>
       </div>
       <span className={`text-xs font-semibold uppercase px-2 py-0.5 rounded ${
-        isFiring ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'
+        isFiring
+          ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+          : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
       }`}>
         {alert.state}
       </span>
@@ -106,49 +110,54 @@ function GrafanaAlertRow({ alert }: { alert: any }) {
   );
 }
 
-// ─── Main Dashboard ──────────────────────────────────────────────────────────
+// ─── Main Dashboard Page Component ──────────────────────────────────────────
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { success, error } = useToast();
-  const navigate = useNavigate();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pollInterval, setPollInterval] = useState<number | false>(10_000);
 
-  // ── Real API queries with 30s auto-refresh ──
   const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: fetchDashboardSummary,
-    refetchInterval: 30_000,
+    refetchInterval: pollInterval,
     retry: 2,
   });
 
   const { data: cpuData } = useQuery({
     queryKey: ['metrics-cpu'],
     queryFn: () => prometheusApi.getCpuMetrics('1h'),
-    refetchInterval: 30_000,
+    refetchInterval: pollInterval,
     retry: 1,
   });
 
   const { data: memData } = useQuery({
     queryKey: ['metrics-memory'],
     queryFn: () => prometheusApi.getMemoryMetrics('1h'),
-    refetchInterval: 30_000,
+    refetchInterval: pollInterval,
     retry: 1,
   });
 
   const { data: cicdRuns } = useQuery({
     queryKey: ['cicd-runs'],
     queryFn: fetchCiCdRuns,
-    refetchInterval: 60_000,
+    refetchInterval: pollInterval ? pollInterval * 2 : false,
     retry: 1,
   });
 
   const { data: grafanaAlerts } = useQuery({
     queryKey: ['grafana-alerts'],
     queryFn: fetchGrafanaAlerts,
-    refetchInterval: 60_000,
+    refetchInterval: pollInterval ? pollInterval * 2 : false,
     retry: 1,
   });
+
+  const { data: incidents = [] } = useIncidents('all', 'all');
+  const criticalIncident = incidents.find(
+    (inc) => inc.severity === 'CRITICAL' && (inc.status === 'OPEN' || inc.status === 'INVESTIGATING')
+  );
 
   const metrics = summary?.metrics;
   const cluster = summary?.cluster;
@@ -168,6 +177,7 @@ export function DashboardPage() {
       await queryClient.invalidateQueries({ queryKey: ['metrics-memory'] });
       await queryClient.invalidateQueries({ queryKey: ['cicd-runs'] });
       await queryClient.invalidateQueries({ queryKey: ['grafana-alerts'] });
+      await queryClient.invalidateQueries({ queryKey: ['incidents'] });
       success('Telemetry Synced', 'All active connections updated.');
     } catch {
       error('Refresh Failed', 'Could not reach server.');
@@ -202,7 +212,7 @@ export function DashboardPage() {
       subtext: isPrometheusLive ? 'Inbound traffic' : 'Not Connected',
       change: isPrometheusLive ? 'Live' : 'No Data',
       isPositive: isPrometheusLive,
-      type: 'cpu' as const,
+      type: 'network' as const,
     },
     {
       title: 'Disk Usage',
@@ -210,7 +220,7 @@ export function DashboardPage() {
       subtext: isPrometheusLive ? 'Storage utilization' : 'Not Connected',
       change: isPrometheusLive ? 'Live' : 'No Data',
       isPositive: isPrometheusLive,
-      type: 'memory' as const,
+      type: 'disk' as const,
     },
     {
       title: 'Total Pods',
@@ -255,17 +265,46 @@ export function DashboardPage() {
         description="Real-time Infrastructure, Connected Repository CI/CD Pipelines & Operational Monitoring"
         actions={
           <div className="flex items-center gap-3">
+            {/* Auto-Refresh Polling Control (P2 Feature) */}
+            <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1 text-xs">
+              <Clock className="h-3.5 w-3.5 text-slate-500" />
+              <span className="text-slate-500 font-medium">Auto-Refresh:</span>
+              <select
+                value={pollInterval === false ? 'off' : pollInterval}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPollInterval(val === 'off' ? false : Number(val));
+                }}
+                className="bg-transparent text-slate-800 dark:text-slate-200 font-semibold focus:outline-none cursor-pointer"
+              >
+                <option value="5000">5s</option>
+                <option value="10000">10s</option>
+                <option value="30000">30s</option>
+                <option value="60000">60s</option>
+                <option value="off">Off</option>
+              </select>
+            </div>
+
             <Button variant="outline" size="sm" onClick={handleRefresh} isLoading={isRefreshing}>
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              <RotateCw className="h-3.5 w-3.5 mr-1.5" />
               Sync Telemetry
             </Button>
             <Button variant="primary" size="sm" onClick={() => navigate('/copilot')}>
-              <Bot className="h-3.5 w-3.5 mr-1.5" />
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
               AI Copilot
             </Button>
           </div>
         }
       />
+
+      {/* Live Critical Incident Alert Banner - only shows on genuine critical crashes */}
+      {criticalIncident && (
+        <LiveAlertBanner
+          podName={criticalIncident.podName}
+          namespace={criticalIncident.namespace}
+          reason={criticalIncident.reason}
+        />
+      )}
 
       {/* Integration Status Bar */}
       <div className="flex flex-wrap gap-3">
@@ -275,9 +314,9 @@ export function DashboardPage() {
           { label: 'GitHub Actions', connected: isCicdConnected },
           { label: 'Grafana', connected: isGrafanaConnected },
         ].map(src => (
-          <div key={src.label} className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div key={src.label} className="flex items-center gap-2 text-xs px-3.5 py-2 rounded-xl bg-white dark:bg-[#0c121e] border border-slate-200 dark:border-slate-800/80 shadow-sm">
             <span className={`w-2 h-2 rounded-full ${src.connected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-            <span className="text-slate-700 dark:text-slate-300 font-medium">{src.label}:</span>
+            <span className="text-slate-800 dark:text-slate-200 font-semibold">{src.label}:</span>
             <span className={src.connected ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-slate-500 dark:text-slate-400'}>
               {src.connected ? 'Connected' : 'Not Connected'}
             </span>
@@ -286,10 +325,10 @@ export function DashboardPage() {
       </div>
 
       {/* 8 Metric Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-4">
         {summaryLoading
           ? Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="h-24 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 animate-pulse shadow-sm" />
+              <div key={i} className="h-[148px] rounded-2xl bg-white dark:bg-[#0c121e] border border-slate-200 dark:border-slate-800/80 animate-pulse shadow-sm" />
             ))
           : telemetryCards.map((card, idx) => (
               <TelemetryWidget key={idx} data={card} />
@@ -301,7 +340,7 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <CpuTrendChart data={cpuData?.series?.[0]?.datapoints ?? []} />
         <MemoryTrendChart data={memData?.series?.[0]?.datapoints ?? []} />
-        <IncidentTrendChart data={[]} />
+        <IncidentTrendChart data={summary?.incidentTimeline ?? []} />
       </div>
 
       {/* Cluster & Incidents */}

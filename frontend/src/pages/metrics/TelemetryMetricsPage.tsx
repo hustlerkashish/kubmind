@@ -53,7 +53,7 @@ export function TelemetryMetricsPage() {
         actions={
           <div className="flex items-center gap-3">
             {/* Time Range Selector */}
-            <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg p-1">
+            <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-1 shadow-sm">
               {['5m', '1h', '6h', '24h', '7d'].map((r) => (
                 <button
                   key={r}
@@ -61,7 +61,7 @@ export function TelemetryMetricsPage() {
                   className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-all ${
                     timeRange === r
                       ? 'bg-blue-600 text-white shadow'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
                 >
                   {r}
@@ -72,13 +72,13 @@ export function TelemetryMetricsPage() {
             {/* Auto Refresh Toggle */}
             <button
               onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-mono transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-mono transition-all shadow-sm ${
                 autoRefresh
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                  : 'border-slate-800 bg-slate-900 text-slate-400'
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400'
               }`}
             >
-              <span className={`h-2 w-2 rounded-full ${autoRefresh ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+              <span className={`h-2 w-2 rounded-full ${autoRefresh ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
               <span>{autoRefresh ? '5s Polling Active' : 'Polling Paused'}</span>
             </button>
 
@@ -91,19 +91,19 @@ export function TelemetryMetricsPage() {
       />
 
       {/* Connection Status Banner */}
-      <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/60 flex items-center justify-between">
+      <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400">
+          <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400">
             <Activity className="h-5 w-5" />
           </div>
           <div>
-            <h4 className="text-xs font-semibold text-slate-200">Prometheus Server Configuration</h4>
-            <p className="text-[11px] text-slate-400 font-mono">
-              Target URL: <code className="text-blue-400">{targetPrometheusUrl}</code> • PromQL Engine Active
+            <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-200">Prometheus Server Configuration</h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+              Target URL: <code className="text-blue-600 dark:text-blue-400 font-semibold">{targetPrometheusUrl}</code> • PromQL Engine Active
             </p>
           </div>
         </div>
-        <span className="text-xs font-mono px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold">
+        <span className="text-xs font-mono px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-semibold">
           Auto-refresh (5s)
         </span>
       </div>
@@ -123,23 +123,23 @@ export function TelemetryMetricsPage() {
           {/* 2. Pod & Node PromQL Subsystem Breakdown */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
-              <div className="p-5 border-b border-slate-800/80 flex items-center justify-between">
+              <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold text-slate-100">Pod Specific PromQL Utilization</h3>
-                  <p className="text-[11px] text-slate-400">sum(rate(container_cpu_usage_seconds_total[5m])) by (pod_name)</p>
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Pod Specific PromQL Utilization</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">sum(rate(container_cpu_usage_seconds_total[5m])) by (pod_name)</p>
                 </div>
-                <span className="text-[11px] text-amber-400 font-mono font-semibold">Active Series</span>
+                <span className="text-[11px] text-amber-500 font-mono font-semibold">Active Series</span>
               </div>
               <div className="p-5 space-y-3">
                 {podMetrics?.series?.length ? (
                   podMetrics.series.map((s, idx) => (
-                    <div key={idx} className="p-3 rounded-lg border border-slate-800 bg-slate-950 flex items-center justify-between text-xs">
-                      <span className="font-mono font-semibold text-slate-200">{s.target}</span>
-                      <span className="font-mono text-amber-400 font-bold">{s.datapoints[s.datapoints.length - 1]?.value}%</span>
+                    <div key={idx} className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex items-center justify-between text-xs">
+                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{s.target}</span>
+                      <span className="font-mono text-amber-500 font-bold">{s.datapoints[s.datapoints.length - 1]?.value}%</span>
                     </div>
                   ))
                 ) : (
-                  <div className="p-4 text-center text-xs text-slate-400 font-mono">
+                  <div className="p-4 text-center text-xs text-slate-500 font-mono">
                     Live Pod Metrics Engine Active (0 pods emitting PromQL stream)
                   </div>
                 )}
@@ -147,23 +147,23 @@ export function TelemetryMetricsPage() {
             </Card>
 
             <Card>
-              <div className="p-5 border-b border-slate-800/80 flex items-center justify-between">
+              <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-semibold text-slate-100">Node Hardware Capacity Load</h3>
-                  <p className="text-[11px] text-slate-400">100 - (avg by (instance) (rate(node_cpu_seconds_total[5m])))</p>
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Node Hardware Capacity Load</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">100 - (avg by (instance) (rate(node_cpu_seconds_total[5m])))</p>
                 </div>
-                <span className="text-[11px] text-purple-400 font-mono font-semibold">Active Series</span>
+                <span className="text-[11px] text-purple-500 font-mono font-semibold">Active Series</span>
               </div>
               <div className="p-5 space-y-3">
                 {nodeMetrics?.series?.length ? (
                   nodeMetrics.series.map((s, idx) => (
-                    <div key={idx} className="p-3 rounded-lg border border-slate-800 bg-slate-950 flex items-center justify-between text-xs">
-                      <span className="font-mono font-semibold text-slate-200">{s.target}</span>
-                      <span className="font-mono text-purple-400 font-bold">{s.datapoints[s.datapoints.length - 1]?.value}%</span>
+                    <div key={idx} className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 flex items-center justify-between text-xs">
+                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{s.target}</span>
+                      <span className="font-mono text-purple-500 font-bold">{s.datapoints[s.datapoints.length - 1]?.value}%</span>
                     </div>
                   ))
                 ) : (
-                  <div className="p-4 text-center text-xs text-slate-400 font-mono">
+                  <div className="p-4 text-center text-xs text-slate-500 font-mono">
                     Live Node Metrics Engine Active (1 node emitting load metrics)
                   </div>
                 )}
@@ -174,11 +174,11 @@ export function TelemetryMetricsPage() {
           {/* 3. Grafana Embed Panels Section */}
           <div>
             <div className="mb-4">
-              <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                <Sliders className="h-5 w-5 text-orange-400" />
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                <Sliders className="h-5 w-5 text-orange-500" />
                 <span>Grafana Embed Panels</span>
               </h2>
-              <p className="text-xs text-slate-400">Prepared iframe dashboard embeds for Grafana v10 integration</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Prepared iframe dashboard embeds for Grafana v10 integration</p>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {grafanaPanels?.map((panel, idx) => (
