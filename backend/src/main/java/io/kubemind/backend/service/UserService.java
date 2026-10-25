@@ -39,7 +39,10 @@ public class UserService {
         }
 
         if (request.getNewPassword() != null && !request.getNewPassword().isBlank()) {
-            user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+            if (request.getNewPassword().trim().length() < 6) {
+                throw new io.kubemind.backend.exception.AppException("Password must be at least 6 characters long", org.springframework.http.HttpStatus.BAD_REQUEST);
+            }
+            user.setPassword(passwordEncoder.encode(request.getNewPassword().trim()));
         }
 
         User updatedUser = userRepository.save(user);

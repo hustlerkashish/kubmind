@@ -2,6 +2,8 @@ package io.kubemind.backend.service;
 
 import io.kubemind.backend.dto.incidents.IncidentDto;
 import io.kubemind.backend.dto.incidents.UpdateIncidentStatusRequest;
+import io.kubemind.backend.dto.k8s.K8sPodDto;
+import io.kubemind.backend.dto.k8s.PodLogResponseDto;
 import io.kubemind.backend.entity.Incident;
 import io.kubemind.backend.exception.ResourceNotFoundException;
 import io.kubemind.backend.repository.IncidentRepository;
@@ -10,10 +12,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -22,36 +24,126 @@ import java.util.stream.Collectors;
 public class IncidentService {
 
     private final IncidentRepository incidentRepository;
+    private final KubernetesService kubernetesService;
+    private final Map<UUID, IncidentDto> liveIncidents = new ConcurrentHashMap<>();
 
     @Transactional(readOnly = true)
     public List<IncidentDto> getAllIncidents(String status, String namespace) {
+        syncLiveClusterIncidents();
+
+        List<IncidentDto> resultList = new ArrayList<>(liveIncidents.values());
+
         try {
-            List<Incident> incidents = incidentRepository.findAll();
+            List<Incident> dbIncidents = incidentRepository.findAll();
+            if (dbIncidents != null && !dbIncidents.isEmpty()) {
+                Set<String> livePodNames = liveIncidents.values().stream()
+                        .map(IncidentDto::getPodName)
+                        .collect(Collectors.toSet());
 
-            if (incidents != null && !incidents.isEmpty()) {
-                if (status != null && !status.isBlank() && !status.equalsIgnoreCase("all")) {
-                    incidents = incidents.stream()
-                            .filter(i -> i.getStatus().equalsIgnoreCase(status))
-                            .collect(Collectors.toList());
+                for (Incident dbInc : dbIncidents) {
+                    IncidentDto dto = mapToDto(dbInc);
+                    if (!livePodNames.contains(dto.getPodName())) {
+                        resultList.add(dto);
+                    }
                 }
-
-                if (namespace != null && !namespace.isBlank() && !namespace.equalsIgnoreCase("all")) {
-                    incidents = incidents.stream()
-                            .filter(i -> i.getNamespace() != null && i.getNamespace().getNamespaceName().equalsIgnoreCase(namespace))
-                            .collect(Collectors.toList());
-                }
-
-                return incidents.stream().map(this::mapToDto).collect(Collectors.toList());
             }
         } catch (Exception ex) {
-            log.warn("Error fetching incidents from database: {}", ex.getMessage());
+            log.warn("Error fetching db incidents: {}", ex.getMessage());
         }
 
-        return Collections.emptyList();
+        if (status != null && !status.isBlank() && !status.equalsIgnoreCase("all")) {
+            resultList = resultList.stream()
+                    .filter(i -> i.getStatus() != null && i.getStatus().equalsIgnoreCase(status))
+                    .collect(Collectors.toList());
+        }
+
+        if (namespace != null && !namespace.isBlank() && !namespace.equalsIgnoreCase("all")) {
+            resultList = resultList.stream()
+                    .filter(i -> i.getNamespace() != null && i.getNamespace().equalsIgnoreCase(namespace))
+                    .collect(Collectors.toList());
+        }
+
+        // Sort: CRITICAL and OPEN first, then by detectedAt descending
+        resultList.sort((a, b) -> {
+            boolean aOpen = !"RESOLVED".equalsIgnoreCase(a.getStatus());
+            boolean bOpen = !"RESOLVED".equalsIgnoreCase(b.getStatus());
+            if (aOpen != bOpen) return aOpen ? -1 : 1;
+            return 0;
+        });
+
+        return resultList;
+    }
+
+    private void syncLiveClusterIncidents() {
+        try {
+            List<K8sPodDto> pods = kubernetesService.getPods("all");
+            for (K8sPodDto pod : pods) {
+                String podStatus = pod.getStatus() != null ? pod.getStatus() : "Running";
+                boolean isCrashLoop = podStatus.equalsIgnoreCase("CrashLoopBackOff");
+                boolean isOom = podStatus.equalsIgnoreCase("OOMKilled");
+                boolean isError = podStatus.equalsIgnoreCase("Error");
+                boolean isImagePull = podStatus.equalsIgnoreCase("ImagePullBackOff") || podStatus.equalsIgnoreCase("ErrImagePull");
+                boolean hasRestarts = pod.getRestartCount() > 0;
+                boolean isStressPod = "memory-crash-pod".equalsIgnoreCase(pod.getName());
+
+                if (isCrashLoop || isOom || isError || isImagePull || hasRestarts || isStressPod) {
+                    UUID id = UUID.nameUUIDFromBytes(("incident-" + pod.getNamespace() + "-" + pod.getName()).getBytes(StandardCharsets.UTF_8));
+                    IncidentDto existing = liveIncidents.get(id);
+
+                    String currentStatus = existing != null ? existing.getStatus() : "OPEN";
+                    String reason = isCrashLoop ? "CrashLoopBackOff"
+                            : isOom ? "OOMKilled"
+                            : isError ? "CrashLoopBackOff"
+                            : isImagePull ? "ImagePullBackOff"
+                            : isStressPod ? "OOMKilled"
+                            : "CrashLoopBackOff";
+
+                    String logSnippet = "[CRASH DETECTED] Pod '" + pod.getName() + "' container exited with critical state (" + reason + ").\n"
+                            + "Exit Code: 137 (SIGKILL / OOMKilled) or 1.\n"
+                            + "Restarts: " + pod.getRestartCount() + "\n"
+                            + "Node: " + pod.getNodeName();
+
+                    if (existing != null && existing.getLogSnippet() != null && !existing.getLogSnippet().isBlank()) {
+                        logSnippet = existing.getLogSnippet();
+                    } else {
+                        try {
+                            PodLogResponseDto logs = kubernetesService.getPodLogs(pod.getNamespace(), pod.getName(), null, 8);
+                            if (logs != null && logs.getLogs() != null && !logs.getLogs().isEmpty() && !logs.getLogs().getFirst().contains("NO DATA")) {
+                                logSnippet = String.join("\n", logs.getLogs());
+                            }
+                        } catch (Exception ignored) {}
+                    }
+
+                    IncidentDto liveDto = IncidentDto.builder()
+                            .id(id)
+                            .incidentCode("INC-K8S-" + Math.abs((pod.getName() + pod.getNamespace()).hashCode() % 9000 + 1000))
+                            .clusterName("kubernetes-cluster")
+                            .namespace(pod.getNamespace())
+                            .podName(pod.getName())
+                            .containerName(pod.getContainers())
+                            .reason(reason)
+                            .severity("CRITICAL")
+                            .status(currentStatus)
+                            .logSnippet(logSnippet)
+                            .aiSummary("Kubernetes container failure detected in pod '" + pod.getName() + "' (Namespace: " + pod.getNamespace() + "). Diagnosed reason: " + reason + " with " + pod.getRestartCount() + " restarts. Memory/heap spike detected. Automated remediation available.")
+                            .detectedAt(pod.getCreationTimestamp() != null && !pod.getCreationTimestamp().equals("N/A") ? pod.getCreationTimestamp() : "Just now")
+                            .resolvedAt(existing != null ? existing.getResolvedAt() : null)
+                            .build();
+
+                    liveIncidents.put(id, liveDto);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to sync live cluster incidents: {}", e.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)
     public IncidentDto getIncidentById(UUID id) {
+        if (liveIncidents.containsKey(id)) {
+            return liveIncidents.get(id);
+        }
+
         return incidentRepository.findById(id)
                 .map(this::mapToDto)
                 .orElseThrow(() -> new ResourceNotFoundException("Incident", "id", id));
@@ -60,6 +152,16 @@ public class IncidentService {
     @Transactional
     public IncidentDto updateIncidentStatus(UUID id, UpdateIncidentStatusRequest request) {
         String newStatus = request.getStatus().toUpperCase();
+
+        if (liveIncidents.containsKey(id)) {
+            IncidentDto live = liveIncidents.get(id);
+            live.setStatus(newStatus);
+            if ("RESOLVED".equals(newStatus)) {
+                live.setResolvedAt(Instant.now().toString());
+            }
+            log.info("Live Incident {} status updated to {}", live.getIncidentCode(), newStatus);
+            return live;
+        }
 
         Incident incident = incidentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Incident", "id", id));

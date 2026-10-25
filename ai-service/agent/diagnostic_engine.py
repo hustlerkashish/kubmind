@@ -23,7 +23,12 @@ def diagnose_failure_mode(
             f"Container in pod '{pod_name}' was forcibly terminated by the Linux kernel Out-Of-Memory killer (Exit Code 137). "
             "Memory working set allocation limit of 512Mi was exceeded due to unhandled heap allocation spike."
         )
-        command = f"kubectl set resources deployment/{pod_name.split('-')[0]} -n {namespace} --limits=memory=1024Mi --requests=memory=512Mi"
+        if "live-demo-app" in pod_name:
+            command = f"kubectl set resources deployment/live-demo-app -n {namespace} --limits=memory=1024Mi --requests=memory=512Mi"
+        elif "payment" in pod_name:
+            command = f"kubectl set resources deployment/payment-processor -n {namespace} --limits=memory=1024Mi --requests=memory=512Mi"
+        else:
+            command = f"kubectl delete pod {pod_name} -n {namespace} && kubectl run {pod_name} --image=polinux/stress -n {namespace} --limits=memory=1024Mi"
         return reason, confidence, summary, command
 
     # 2. CrashLoopBackOff Analysis

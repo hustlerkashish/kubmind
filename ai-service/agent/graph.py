@@ -3,11 +3,29 @@ from agent.state import AgentState
 from agent.mcp_client import invoke_mcp_tool
 from agent.diagnostic_engine import diagnose_failure_mode
 
+import re
+
 async def intent_recognition_node(state: AgentState) -> dict:
     """Node 1: Analyzes user prompt intent and sets pod/namespace targets."""
-    prompt = state.user_prompt
-    pod = state.pod_name or "payment-processor-78d9b-x92q"
-    ns = state.namespace or "payment"
+    prompt = state.user_prompt or ""
+    pod = state.pod_name
+    ns = state.namespace
+
+    # Extract target pod name dynamically from natural language prompt
+    pod_match = re.search(r'(?:pod|on|container|inspect)\s+([a-zA-Z0-9\-_]+)', prompt, re.IGNORECASE)
+    if pod_match and pod_match.group(1).lower() not in ['the', 'a', 'my', 'in', 'default', 'this', 'incident', 'memory']:
+        pod = pod_match.group(1)
+    elif not pod:
+        pod = "memory-crash-pod"
+
+    # Extract namespace if specified in prompt
+    ns_match = re.search(r'(?:namespace|in)\s+([a-zA-Z0-9\-_]+)', prompt, re.IGNORECASE)
+    if ns_match and ns_match.group(1).lower() not in ['the', 'a', 'crash']:
+        ns = ns_match.group(1)
+    elif "default" in prompt.lower():
+        ns = "default"
+    elif not ns:
+        ns = "default"
 
     return {
         "pod_name": pod,
@@ -17,8 +35,8 @@ async def intent_recognition_node(state: AgentState) -> dict:
 
 async def mcp_ingestion_node(state: AgentState) -> dict:
     """Node 2: Connects to MCP Server and executes getLogs, filterErrors & getEvents."""
-    pod = state.pod_name or "payment-processor-78d9b-x92q"
-    ns = state.namespace or "payment"
+    pod = state.pod_name or "memory-crash-pod"
+    ns = state.namespace or "default"
 
     tools = list(state.executed_tools)
 
@@ -45,8 +63,8 @@ async def mcp_ingestion_node(state: AgentState) -> dict:
 
 async def diagnostic_analysis_node(state: AgentState) -> dict:
     """Node 3: Runs rule-based diagnostic engine over ingested logs & events."""
-    pod = state.pod_name or "payment-processor-78d9b-x92q"
-    ns = state.namespace or "payment"
+    pod = state.pod_name or "memory-crash-pod"
+    ns = state.namespace or "default"
     events = state.mcp_telemetry.get("events", [])
 
     reason, confidence, summary, command = diagnose_failure_mode(

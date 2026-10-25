@@ -32,7 +32,11 @@ export function ProfilePage() {
   const onSubmit = async (data: UpdateProfileFormData) => {
     setApiError('');
     try {
-      const response = await apiClient.put('/users/profile', data);
+      const payload: { fullName: string; newPassword?: string } = { fullName: data.fullName };
+      if (data.newPassword && data.newPassword.trim().length > 0) {
+        payload.newPassword = data.newPassword.trim();
+      }
+      const response = await apiClient.put('/users/profile', payload);
       if (response.data.success) {
         updateUser(response.data.data);
         reset({ fullName: response.data.data.fullName, newPassword: '' });
@@ -52,13 +56,13 @@ export function ProfilePage() {
     : [user?.role || 'ROLE_DEVELOPER'];
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-6 pb-12 max-w-4xl mx-auto">
       <PageHeader
         title="Operator Profile"
         description="Manage SRE operator identity, permissions, and security authentication credentials"
       />
 
-      <div className="max-w-3xl space-y-6">
+      <div className="space-y-6">
         {/* Profile Identity Card */}
         <Card className="rounded-2xl border border-slate-200/90 dark:border-slate-800/80 bg-white dark:bg-[#0c121e] shadow-sm">
           <CardHeader>

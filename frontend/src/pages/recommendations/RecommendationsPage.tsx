@@ -124,8 +124,8 @@ export function RecommendationsPage() {
           {isLoading ? (
             <Loader text="Analyzing cluster telemetry and incident logs..." />
           ) : (
-            <Card>
-              <CardContent className="pt-6">
+            <Card className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white/85 dark:bg-[#0c121e]/85 backdrop-blur-xl shadow-sm overflow-hidden">
+              <CardContent className="p-0">
                 {recommendations.length > 0 ? (
                   <Table>
                     <TableHeader>

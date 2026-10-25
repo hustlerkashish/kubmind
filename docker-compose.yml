@@ -37,7 +37,7 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-kubemind_admin}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-kubemind_secure_password_2026}
       JWT_SECRET: ${JWT_SECRET:-9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b}
-      PROMETHEUS_URL: ${PROMETHEUS_URL:-http://host.docker.internal:9090}
+      PROMETHEUS_URL: ${PROMETHEUS_URL:-http://prometheus:9090}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPOS: ${GITHUB_REPOS:-}
       GRAFANA_URL: ${GRAFANA_URL:-}
@@ -49,6 +49,18 @@ services:
     extra_hosts:
       - "kubernetes.docker.internal:host-gateway"
       - "host.docker.internal:host-gateway"
+
+  # ---------------------------------------------------------------------------
+  # 2b. Metrics Layer: Prometheus
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: kubemind-prometheus
+    restart: always
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
   # ---------------------------------------------------------------------------
   # 3. Model Context Protocol (MCP) Server: Python FastAPI

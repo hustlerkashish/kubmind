@@ -39,7 +39,7 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6 pb-12 max-w-4xl">
+    <div className="space-y-6 pb-12 max-w-4xl mx-auto">
       <PageHeader
         title="Workspace Connection & Token Settings"
         description="Configure custom GitHub tokens, repositories, Kubernetes cluster endpoints, Prometheus, and Grafana URLs for the active connection tab."

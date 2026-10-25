@@ -169,10 +169,30 @@ public class KubernetesService {
 
             return podList.getItems().stream().map(pod -> {
                 int totalRestarts = 0;
+                String effectiveStatus = pod.getStatus() != null ? pod.getStatus().getPhase() : "Unknown";
+
                 if (pod.getStatus() != null && pod.getStatus().getContainerStatuses() != null) {
                     totalRestarts = pod.getStatus().getContainerStatuses().stream()
                             .mapToInt(V1ContainerStatus::getRestartCount)
                             .sum();
+
+                    for (V1ContainerStatus cs : pod.getStatus().getContainerStatuses()) {
+                        if (cs.getState() != null) {
+                            if (cs.getState().getWaiting() != null && cs.getState().getWaiting().getReason() != null) {
+                                effectiveStatus = cs.getState().getWaiting().getReason();
+                                break;
+                            } else if (cs.getState().getTerminated() != null && cs.getState().getTerminated().getReason() != null) {
+                                effectiveStatus = cs.getState().getTerminated().getReason();
+                                break;
+                            }
+                        }
+                        if (totalRestarts > 0 && cs.getLastState() != null && cs.getLastState().getTerminated() != null
+                                && cs.getLastState().getTerminated().getReason() != null) {
+                            if ("Running".equalsIgnoreCase(effectiveStatus)) {
+                                effectiveStatus = cs.getLastState().getTerminated().getReason();
+                            }
+                        }
+                    }
                 }
 
                 String containerNames = "";
@@ -185,7 +205,7 @@ public class KubernetesService {
                 return K8sPodDto.builder()
                         .name(pod.getMetadata() != null ? pod.getMetadata().getName() : "unknown")
                         .namespace(pod.getMetadata() != null ? pod.getMetadata().getNamespace() : "default")
-                        .status(pod.getStatus() != null ? pod.getStatus().getPhase() : "Unknown")
+                        .status(effectiveStatus)
                         .podIP(pod.getStatus() != null ? pod.getStatus().getPodIP() : "N/A")
                         .hostIP(pod.getStatus() != null ? pod.getStatus().getHostIP() : "N/A")
                         .nodeName(pod.getSpec() != null ? pod.getSpec().getNodeName() : "N/A")

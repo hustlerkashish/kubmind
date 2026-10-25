@@ -31,6 +31,15 @@ public class KubernetesClientConfig {
                 log.info("Loading Kubernetes configuration from kubeconfig file: {}", kubeconfigFile.getAbsolutePath());
                 KubeConfig kubeConfig = KubeConfig.loadKubeConfig(new FileReader(kubeconfigFile));
                 ApiClient client = ClientBuilder.kubeconfig(kubeConfig).build();
+                if ((new File("/.dockerenv").exists() || "prod".equalsIgnoreCase(System.getenv("SPRING_PROFILES_ACTIVE")))
+                        && client.getBasePath() != null) {
+                    if (client.getBasePath().contains("127.0.0.1")) {
+                        client.setBasePath(client.getBasePath().replace("127.0.0.1", "kubernetes.docker.internal"));
+                    } else if (client.getBasePath().contains("localhost")) {
+                        client.setBasePath(client.getBasePath().replace("localhost", "kubernetes.docker.internal"));
+                    }
+                    client.setVerifyingSsl(false);
+                }
                 io.kubernetes.client.openapi.Configuration.setDefaultApiClient(client);
                 return client;
             }

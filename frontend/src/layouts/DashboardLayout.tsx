@@ -11,7 +11,7 @@ export function DashboardLayout() {
       <div className="flex-1 flex flex-col min-w-0 bg-slate-100 dark:bg-[#090d16]">
         <Navbar />
         <ProjectTabBar />
-        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto bg-slate-100 dark:bg-[#090d16]">
+        <main className="flex-1 px-6 py-6 md:px-8 md:py-8 w-full max-w-[1600px] mx-auto bg-slate-100 dark:bg-[#090d16]">
           <Outlet />
         </main>
       </div>

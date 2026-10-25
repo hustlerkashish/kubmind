@@ -14,7 +14,6 @@ import {
   Lightbulb,
   SlidersHorizontal,
   UserCircle,
-  Compass,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useClusterSummary } from '@/hooks/useKubernetes';
@@ -44,8 +43,12 @@ export function Sidebar() {
       <div className="flex-1 overflow-y-auto">
         {/* Brand Header */}
         <div className="h-16 flex items-center gap-3 px-6 border-b border-slate-200 dark:border-slate-800/80">
-          <div className="h-9 w-9 rounded-lg bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Compass className="h-5 w-5 text-white" />
+          <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 flex items-center justify-center shadow-md shadow-blue-500/20">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 text-white">
+              <circle cx="12" cy="12" r="3" />
+              <circle cx="12" cy="12" r="8" opacity="0.85" />
+              <path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+            </svg>
           </div>
           <div>
             <h1 className="font-bold tracking-tight text-base leading-none text-slate-900 dark:text-white">KubeMind</h1>

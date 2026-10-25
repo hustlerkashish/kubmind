@@ -12,6 +12,8 @@ import {
 import { copilotApi } from '@/services/copilotService';
 import { useToast } from '@/context/ToastContext';
 import { Button } from '@/components/ui/Button';
+import { usePods } from '@/hooks/useKubernetes';
+import { MarkdownMessage } from './MarkdownMessage';
 
 interface Message {
   id: string;
@@ -25,6 +27,7 @@ export function GlobalCopilotDrawer() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const { data: livePods = [] } = usePods('all');
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome',
@@ -82,8 +85,11 @@ export function GlobalCopilotDrawer() {
     if (!textToSend) setInput('');
     setIsLoading(true);
 
+    const activeTargetPod = livePods.find((p) => p.status === 'Error' || p.status === 'OOMKilled' || p.name.includes('crash'))?.name || livePods[0]?.name || 'memory-crash-pod';
+    const activeTargetNs = livePods.find((p) => p.name === activeTargetPod)?.namespace || 'default';
+
     try {
-      const response = await copilotApi.chat(query, 'production', 'auth-service-7f89b-9x2l');
+      const response = await copilotApi.chat(query, activeTargetNs, activeTargetPod);
 
       const botMsg: Message = {
         id: (Date.now() + 1).toString(),
@@ -102,9 +108,9 @@ export function GlobalCopilotDrawer() {
       const fallbackMsg: Message = {
         id: (Date.now() + 1).toString(),
         sender: 'bot',
-        text: `🔍 [LangGraph Diagnostic for ${getContextName()}]: I evaluated current cluster telemetry against baseline SLOs. If you are troubleshooting a crash, verify container memory limits or inspect OOMKilled events.`,
+        text: `🔍 [LangGraph Diagnostic for ${getContextName()}]: I evaluated current cluster telemetry against baseline SLOs for pod \`${activeTargetPod}\`. If you are troubleshooting a crash, verify container memory limits or inspect OOMKilled events.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        actions: ['kubectl describe pod <pod-name>', 'kubectl logs --tail=100 -f'],
+        actions: [`kubectl describe pod ${activeTargetPod} -n ${activeTargetNs}`, `kubectl logs ${activeTargetPod} -n ${activeTargetNs} --tail=100`],
       };
       setMessages((prev) => [...prev, fallbackMsg]);
     } finally {
@@ -212,10 +218,14 @@ export function GlobalCopilotDrawer() {
                 className={`max-w-[85%] rounded-2xl p-3.5 space-y-2 shadow-sm ${
                   msg.sender === 'user'
                     ? 'bg-blue-600 text-white rounded-tr-none'
-                    : 'bg-slate-100 dark:bg-slate-900/90 text-slate-800 dark:text-slate-200 border border-slate-200/80 dark:border-slate-800 rounded-tl-none'
+                    : 'bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-tl-none'
                 }`}
               >
-                <div className="whitespace-pre-wrap leading-relaxed">{msg.text}</div>
+                {msg.sender === 'user' ? (
+                  <div className="whitespace-pre-wrap leading-relaxed text-xs">{msg.text}</div>
+                ) : (
+                  <MarkdownMessage content={msg.text} />
+                )}
 
                 {msg.actions && msg.actions.length > 0 && (
                   <div className="mt-2.5 pt-2 border-t border-slate-200 dark:border-slate-800 space-y-1.5">

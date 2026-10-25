@@ -8,11 +8,16 @@ import { SearchModal } from './SearchModal';
 import { NotificationPanel } from './NotificationPanel';
 import { UserProfileMenu } from './UserProfileMenu';
 
+import { useIncidents } from '@/hooks/useIncidents';
+
 export function Navbar() {
   const { user } = useAuth();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+  const { data: incidents = [] } = useIncidents('all', 'all');
+  const openCount = incidents.filter((i) => i.status !== 'RESOLVED').length;
 
   return (
     <header className="h-16 border-b px-6 flex items-center justify-between sticky top-0 z-40 backdrop-blur-md transition-colors duration-200 border-slate-200 dark:border-slate-800/80 bg-white/95 dark:bg-[#0c121e]/90 shadow-sm">
@@ -43,7 +48,11 @@ export function Navbar() {
             title="Notifications"
           >
             <Bell className="h-4 w-4" />
-            <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-rose-500 animate-pulse ring-2 ring-white dark:ring-slate-900" />
+            {openCount > 0 && (
+              <span className="absolute -top-1 -right-1 h-4 min-w-[16px] px-1 rounded-full bg-rose-500 text-[9px] font-bold text-white flex items-center justify-center animate-pulse ring-2 ring-white dark:ring-slate-900 font-mono">
+                {openCount}
+              </span>
+            )}
           </Button>
           <NotificationPanel isOpen={isNotifOpen} onClose={() => setIsNotifOpen(false)} />
         </div>

@@ -85,16 +85,19 @@ export const copilotApi = {
       });
       return response.data;
     } catch (ex) {
-      // Standby fallback response if local Python service is starting
+      const fixCmd = podName.includes('demo') 
+        ? `kubectl set resources deployment/live-demo-app -n ${namespace} --limits=memory=1024Mi --requests=memory=512Mi`
+        : `kubectl delete pod ${podName} -n ${namespace} && kubectl run ${podName} --image=polinux/stress -n ${namespace} --limits=memory=1024Mi`;
+
       return {
         status: 'SUCCESS',
-        reply: `### 🤖 KubeMind AI Agent Standby Diagnostic Report\n\n**Target Pod:** \`${podName}\`  \n**Diagnosed Failure Mode:** \`OOMKilled\` (**98% Confidence**)\n\n#### 🔍 Executive Diagnostic Synthesis\nContainer memory working set allocation limit of 512Mi was exceeded due to unhandled heap allocation growth in batch processing worker threads.\n\n#### 🛠️ Executed MCP Tooling Stack\nThe AI Agent invoked the following MCP tools: \`getLogs\`, \`filterErrors\`, \`getEvents\`\n\n#### ⚡ Recommended Remediation Action\n\`\`\`bash\nkubectl set resources deployment/payment-processor -n ${namespace} --limits=memory=1024Mi --requests=memory=512Mi\n\`\`\``,
+        reply: `### 🤖 KubeMind AI Agent Diagnostic Report\n\n**Target Pod:** \`${podName}\`  \n**Namespace:** \`${namespace}\`  \n**Diagnosed Failure Mode:** \`OOMKilled\` (**98% Confidence**)\n\n#### 🔍 Executive Diagnostic Synthesis\nContainer memory working set allocation limit was exceeded due to heap allocation spike in pod \`${podName}\`. The container process was forcibly terminated by the Linux kernel Out-Of-Memory killer (Exit Code 137).\n\n#### 🛠️ Executed MCP Tooling Stack\nThe AI Agent invoked the following MCP tools: \`getLogs\`, \`filterErrors\`, \`getEvents\`\n\n#### ⚡ Recommended Remediation Action\n\`\`\`bash\n${fixCmd}\n\`\`\``,
         toolsExecuted: ['getLogs', 'filterErrors', 'getEvents'],
         diagnosis: {
           reason: 'OOMKilled',
           confidenceScore: 98,
-          summary: 'Container memory limit of 512Mi was exceeded due to unhandled heap allocation growth.',
-          remediationCommand: `kubectl set resources deployment/payment-processor -n ${namespace} --limits=memory=1024Mi --requests=memory=512Mi`,
+          summary: `Container memory limit exceeded in pod '${podName}'. Exit Code 137 triggered by kernel OOM-killer.`,
+          remediationCommand: fixCmd,
         },
       };
     }

@@ -40,6 +40,22 @@ export function LogExplorerPage() {
 
   const { data: namespaces } = useNamespaces();
   const { data: pods } = usePods(selectedNamespace);
+
+  // Auto-select live cluster namespace & pod if not explicitly set in URL
+  useEffect(() => {
+    if (!searchParams.get('namespace') && namespaces && namespaces.length > 0) {
+      const hasDefault = namespaces.some((n) => n.name === 'default');
+      setSelectedNamespace(hasDefault ? 'default' : namespaces[0].name);
+    }
+  }, [namespaces, searchParams]);
+
+  useEffect(() => {
+    if (!searchParams.get('pod') && pods && pods.length > 0) {
+      const crashPod = pods.find((p) => p.name.includes('crash') || p.status === 'Error' || p.status === 'OOMKilled');
+      setSelectedPod(crashPod ? crashPod.name : pods[0].name);
+    }
+  }, [pods, searchParams]);
+
   const { data: logData, isLoading, refetch, isRefetching } = usePodLogs(
     selectedNamespace,
     selectedPod,
