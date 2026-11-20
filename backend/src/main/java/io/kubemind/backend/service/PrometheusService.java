@@ -1,8 +1,11 @@
 package io.kubemind.backend.service;
 
 import io.kubemind.backend.dto.metrics.*;
+import io.kubemind.backend.security.SsrfValidator;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -13,21 +16,58 @@ import java.util.*;
 @Slf4j
 public class PrometheusService {
 
-    @Value("${app.prometheus.url:http://prometheus-server:80}")
+    @Value("${app.prometheus.url:http://prometheus:9090}")
     private String prometheusUrl;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    @Autowired(required = false)
+    private Environment environment;
+
+    private final RestTemplate restTemplate = createSafeRestTemplate();
+
+    private static RestTemplate createSafeRestTemplate() {
+        org.springframework.http.client.SimpleClientHttpRequestFactory factory =
+                new org.springframework.http.client.SimpleClientHttpRequestFactory() {
+                    @Override
+                    protected void prepareConnection(java.net.HttpURLConnection connection, String httpMethod) throws java.io.IOException {
+                        super.prepareConnection(connection, httpMethod);
+                        connection.setInstanceFollowRedirects(false);
+                    }
+                };
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(10000);
+        return new RestTemplate(factory);
+    }
+
+    private boolean isProduction() {
+        if (environment == null) return false;
+        for (String profile : environment.getActiveProfiles()) {
+            if (profile != null) {
+                String p = profile.trim().toLowerCase();
+                if ("prod".equals(p) || "production".equals(p)) return true;
+            }
+        }
+        return false;
+    }
 
     private String resolveUrl(String override) {
-        String raw = (override != null && !override.isBlank()) ? override : prometheusUrl;
-        if (raw == null || raw.isBlank()) return "http://prometheus-server:80";
-        String url = raw.replaceAll("/+$", "");
-        if (url.contains("localhost")) {
-            url = url.replace("localhost", "host.docker.internal");
-        } else if (url.contains("127.0.0.1")) {
-            url = url.replace("127.0.0.1", "host.docker.internal");
+        if (isProduction()) {
+            return (prometheusUrl != null && !prometheusUrl.isBlank()) ? prometheusUrl : "http://prometheus:9090";
         }
-        return url;
+
+        if (override != null && !override.isBlank()) {
+            if (!SsrfValidator.isSafeUrl(override)) {
+                log.warn("SSRF protection: Rejected untrusted Prometheus URL override: {}", override);
+                return (prometheusUrl != null && !prometheusUrl.isBlank()) ? prometheusUrl : "http://prometheus:9090";
+            }
+            String url = override.replaceAll("/+$", "");
+            if (url.contains("localhost")) {
+                url = url.replace("localhost", "host.docker.internal");
+            } else if (url.contains("127.0.0.1")) {
+                url = url.replace("127.0.0.1", "host.docker.internal");
+            }
+            return url;
+        }
+        return (prometheusUrl != null && !prometheusUrl.isBlank()) ? prometheusUrl : "http://prometheus:9090";
     }
 
     public PrometheusQueryResultDto getCpuMetrics(String range) {

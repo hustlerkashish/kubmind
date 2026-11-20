@@ -1,11 +1,14 @@
-from fastapi import FastAPI, HTTPException
+import os
+import secrets
+from fastapi import FastAPI, HTTPException, Security, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
 from agent.state import AgentState
 from agent.graph import build_agent_graph
-from config import PORT
+from config import PORT, INTERNAL_API_KEY, ALLOWED_ORIGINS
 
 app = FastAPI(
     title="KubeMind AI Copilot Agent Service",
@@ -15,11 +18,28 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+api_key_header = APIKeyHeader(name="X-Internal-API-Key", auto_error=False)
+bearer_scheme = HTTPBearer(auto_error=False)
+
+def verify_internal_auth(
+    api_key: Optional[str] = Security(api_key_header),
+    bearer: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme)
+):
+    """Enforces API key authentication on protected AI Copilot endpoints."""
+    if INTERNAL_API_KEY:
+        provided = api_key or (bearer.credentials if bearer else None)
+        if not provided or not secrets.compare_digest(provided, INTERNAL_API_KEY):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized: Missing or invalid API key for AI Copilot Service."
+            )
+    return True
 
 agent_executor = build_agent_graph()
 
@@ -35,13 +55,14 @@ class RcaRequest(BaseModel):
 
 @app.get("/health")
 def health_check():
+    """Unauthenticated health probe endpoint for Docker and Kubernetes liveness checks."""
     return {
         "status": "UP",
         "service": "KubeMind AI Agent Service",
         "framework": "LangGraph v0.1"
     }
 
-@app.post("/api/v1/copilot/chat")
+@app.post("/api/v1/copilot/chat", dependencies=[Depends(verify_internal_auth)])
 async def copilot_chat(request: ChatRequest):
     """Executes full LangGraph AI Agent graph for interactive user chat queries."""
     initial_state = AgentState(
@@ -84,7 +105,7 @@ async def copilot_chat(request: ChatRequest):
     except Exception as ex:
         raise HTTPException(status_code=500, detail=f"AI Agent graph execution error: {str(ex)}")
 
-@app.post("/api/v1/rca/analyze")
+@app.post("/api/v1/rca/analyze", dependencies=[Depends(verify_internal_auth)])
 async def analyze_incident(request: RcaRequest):
     """Triggers automated RCA analysis for target pod."""
     prompt = f"Analyze incident on pod {request.podName} in namespace {request.namespace}"

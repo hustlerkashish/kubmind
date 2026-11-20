@@ -1,5 +1,7 @@
-from fastapi import FastAPI, HTTPException
+import secrets
+from fastapi import FastAPI, HTTPException, Security, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Dict, Any, Optional, List
 
@@ -7,7 +9,7 @@ from tools.k8s_tools import get_pods, get_deployments, get_nodes, get_events, ge
 from tools.prometheus_tools import get_cpu, get_memory, get_node_metrics
 from tools.database_tools import search_incidents, save_incident, save_recommendation, get_chat_history
 from tools.logs_tools import summarize_logs, filter_errors
-from config import PORT
+from config import PORT, INTERNAL_API_KEY, ALLOWED_ORIGINS
 
 app = FastAPI(
     title="KubeMind MCP (Model Context Protocol) Server",
@@ -17,11 +19,37 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+api_key_header = APIKeyHeader(name="X-Internal-API-Key", auto_error=False)
+bearer_scheme = HTTPBearer(auto_error=False)
+
+def verify_internal_auth(
+    api_key: Optional[str] = Security(api_key_header),
+    bearer: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme)
+):
+    """Enforces API key authentication on protected MCP endpoints."""
+    if INTERNAL_API_KEY:
+        provided = api_key or (bearer.credentials if bearer else None)
+        if not provided or not secrets.compare_digest(provided, INTERNAL_API_KEY):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized: Missing or invalid API key for MCP Server."
+            )
+    return True
+
+@app.get("/health")
+def health_check():
+    """Unauthenticated health probe endpoint for Docker and Kubernetes liveness checks."""
+    return {
+        "status": "UP",
+        "service": "KubeMind MCP Server",
+        "version": "1.0.0"
+    }
 
 class MCPCallRequest(BaseModel):
     name: str
@@ -193,7 +221,7 @@ def health_check():
         "registeredTools": len(TOOLS_REGISTRY)
     }
 
-@app.get("/mcp/tools")
+@app.get("/mcp/tools", dependencies=[Depends(verify_internal_auth)])
 def list_tools():
     """Returns JSON schema of all 14 tools registered with MCP Protocol Server."""
     tools_list = []
@@ -205,7 +233,7 @@ def list_tools():
         })
     return {"tools": tools_list}
 
-@app.post("/mcp/call")
+@app.post("/mcp/call", dependencies=[Depends(verify_internal_auth)])
 async def call_tool(request: MCPCallRequest):
     """Executes target MCP tool dynamically based on tool name and arguments."""
     tool = TOOLS_REGISTRY.get(request.name)

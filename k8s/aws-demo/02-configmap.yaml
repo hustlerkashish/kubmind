@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubemind-config
+  namespace: kubemind
+  labels:
+    app.kubernetes.io/name: kubemind-config
+    app.kubernetes.io/part-of: kubemind
+data:
+  POSTGRES_DB: "kubemind"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  SPRING_PROFILES_ACTIVE: "prod"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres.kubemind.svc.cluster.local:5432/kubemind"
+  ALLOWED_ORIGINS: "http://localhost,https://kubemind.example.com"
+  FRONTEND_BASE_URL: "https://kubemind.example.com"
+  AI_SERVICE_URL: "http://ai-service.kubemind.svc.cluster.local:8000"
+  MCP_SERVER_URL: "http://mcp-server.kubemind.svc.cluster.local:8001"
+  PROMETHEUS_URL: "http://prometheus.kubemind.svc.cluster.local:9090"
+  DEFAULT_MODEL: "llama-3.1-70b-versatile"

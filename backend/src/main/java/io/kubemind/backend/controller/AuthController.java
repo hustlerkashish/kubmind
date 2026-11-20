@@ -39,6 +39,14 @@ public class AuthController {
                 .body(ApiResponse.success(registeredUser, "Operator registered successfully"));
     }
 
+    @PostMapping("/setup-admin")
+    @Operation(summary = "Initialize primary administrator using secure one-time setup token")
+    public ResponseEntity<ApiResponse<UserDto>> setupAdmin(@Valid @RequestBody SetupAdminRequest setupAdminRequest) {
+        UserDto adminUser = authService.setupInitialAdmin(setupAdminRequest);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(adminUser, "Initial administrator account initialized successfully"));
+    }
+
     @PostMapping("/refresh")
     @Operation(summary = "Exchange valid refresh token for a new access token")
     public ResponseEntity<ApiResponse<TokenRefreshResponse>> refreshToken(@Valid @RequestBody TokenRefreshRequest request) {
@@ -57,11 +65,11 @@ public class AuthController {
 
     @PostMapping("/forgot-password")
     @Operation(summary = "Request password reset token for operator email")
-    public ResponseEntity<ApiResponse<Map<String, String>>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
-        String resetToken = authService.requestPasswordReset(request);
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.requestPasswordReset(request);
         return ResponseEntity.ok(ApiResponse.success(
-                Map.of("resetToken", resetToken),
-                "Password reset token issued. In production, this will be dispatched to " + request.getEmail()
+                null,
+                "If an account exists with that email address, password reset instructions have been dispatched."
         ));
     }
 

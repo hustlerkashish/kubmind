@@ -51,7 +51,7 @@ Run in **PowerShell**:
 ```
 > **Saved Admin Credentials:**
 > - **Username:** `admin`
-> - **Password:** `rcq0DEhVdNIie2dNze3fJJcjuDpvTonEp0tiNRrI`
+> - **Password:** *(Retrieved dynamically via the PowerShell command above)*
 
 ---
 

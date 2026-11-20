@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kubemind-ingress
+  namespace: kubemind
+  labels:
+    app.kubernetes.io/name: kubemind-ingress
+    app.kubernetes.io/part-of: kubemind
+  annotations:
+    kubernetes.io/ingress.class: "traefik"
+    traefik.ingress.kubernetes.io/router.entrypoints: "web,websecure"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  # TLS configuration for production HTTPS:
+  # Requires Cert-Manager and domain DNS A-record pointed to the Elastic IP.
+  tls:
+    - hosts:
+        - "kubemind.example.com"
+      secretName: kubemind-tls-cert
+  rules:
+    - host: "kubemind.example.com"
+      http:
+        paths:
+          # Frontend UI and Nginx-proxied API fallback
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
+          # Direct Backend API routing (Spring Boot /api/v1 context)
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8080

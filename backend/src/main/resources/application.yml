@@ -11,10 +11,18 @@ server:
 
 app:
   jwt:
-    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    secret: ${JWT_SECRET:}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
   cors:
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:80}
+  frontend:
+    base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+  setup:
+    token: ${KUBEMIND_SETUP_TOKEN:}
+  initial-admin:
+    username: ${KUBEMIND_INITIAL_ADMIN_USERNAME:}
+    email: ${KUBEMIND_INITIAL_ADMIN_EMAIL:}
+    password: ${KUBEMIND_INITIAL_ADMIN_PASSWORD:}
   prometheus:
     url: ${PROMETHEUS_URL:http://prometheus-server:80}
 

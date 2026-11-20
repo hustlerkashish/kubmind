@@ -6,8 +6,13 @@ import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.apis.VersionApi;
 import io.kubernetes.client.openapi.models.*;
 import io.kubemind.backend.dto.k8s.*;
+import io.kubemind.backend.exception.AppException;
+import io.kubemind.backend.security.SsrfValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
@@ -21,8 +26,46 @@ public class KubernetesService {
 
     private final ApiClient defaultApiClient;
 
+    @Autowired(required = false)
+    private Environment environment;
+
+    private boolean isProduction() {
+        if (environment == null) return false;
+        for (String profile : environment.getActiveProfiles()) {
+            if (profile != null) {
+                String p = profile.trim().toLowerCase();
+                if ("prod".equals(p) || "production".equals(p)) return true;
+            }
+        }
+        return false;
+    }
+
+    private void checkProductionAuthFailure(Exception ex, String operation) {
+        if (ex instanceof io.kubernetes.client.openapi.ApiException apiEx) {
+            if (apiEx.getCode() == 401 || apiEx.getCode() == 403) {
+                log.error("Kubernetes API authentication/authorization failed during {} (HTTP {}): {}", operation, apiEx.getCode(), apiEx.getResponseBody());
+                throw new AppException("Kubernetes API authentication/authorization failed (" + apiEx.getCode() + ") during " + operation, HttpStatus.UNAUTHORIZED);
+            }
+        }
+        if (isProduction()) {
+            log.error("Production Kubernetes API failure during {}: {}", operation, ex.getMessage());
+            throw new AppException("Production Kubernetes API failure during " + operation + ": " + ex.getMessage(), HttpStatus.BAD_GATEWAY);
+        }
+    }
+
     private ApiClient getApiClient(String urlOverride, String tokenOverride) {
+        if (isProduction()) {
+            if (urlOverride != null && !urlOverride.isBlank()) {
+                log.warn("Ignoring dynamic K8s URL override in production profile to prevent SSRF.");
+            }
+            return defaultApiClient;
+        }
+
         if (urlOverride != null && !urlOverride.isBlank()) {
+            if (!SsrfValidator.isSafeUrl(urlOverride)) {
+                log.warn("SSRF protection: Rejected untrusted K8s URL override: {}", urlOverride);
+                return defaultApiClient;
+            }
             try {
                 String url = urlOverride.replaceAll("/+$", "");
                 if (url.contains("localhost")) {
@@ -32,7 +75,6 @@ public class KubernetesService {
                 }
                 ApiClient client = new ApiClient();
                 client.setBasePath(url);
-                client.setVerifyingSsl(false);
                 if (tokenOverride != null && !tokenOverride.isBlank()) {
                     client.setApiKeyPrefix("Bearer");
                     client.setApiKey(tokenOverride);
@@ -69,6 +111,7 @@ public class KubernetesService {
                     .build();
 
         } catch (Exception ex) {
+            checkProductionAuthFailure(ex, "getPodLogs");
             log.warn("Error fetching live pod logs from K8s API: {}", ex.getMessage());
             return PodLogResponseDto.builder()
                     .podName(podName)
@@ -124,11 +167,24 @@ public class KubernetesService {
                 }
             }
 
+            String k8sVersion = "Unknown";
+            if (connected) {
+                try {
+                    VersionApi versionApi = new VersionApi(client);
+                    VersionInfo vInfo = versionApi.getCode().execute();
+                    if (vInfo != null && vInfo.getGitVersion() != null) {
+                        k8sVersion = vInfo.getGitVersion();
+                    }
+                } catch (Exception ve) {
+                    log.debug("VersionApi getCode exception: {}", ve.getMessage());
+                }
+            }
+
             return K8sClusterDto.builder()
                     .clusterName(connected ? "kubernetes-cluster" : "Disconnected Cluster")
                     .serverUrl(client.getBasePath())
                     .currentContext("active-context")
-                    .kubernetesVersion("v1.30.0")
+                    .kubernetesVersion(k8sVersion)
                     .status(connected ? "Online" : "Disconnected")
                     .connected(connected)
                     .totalNodes(totalNodes)
@@ -136,6 +192,7 @@ public class KubernetesService {
                     .build();
 
         } catch (Exception ex) {
+            checkProductionAuthFailure(ex, "getClusterSummary");
             log.warn("Cluster telemetry fetch failed: {}", ex.getMessage());
             return K8sClusterDto.builder()
                     .clusterName("Disconnected Cluster")
@@ -217,6 +274,7 @@ public class KubernetesService {
             }).collect(Collectors.toList());
 
         } catch (Exception ex) {
+            checkProductionAuthFailure(ex, "getPods");
             log.warn("Error fetching pods from K8s API: {}", ex.getMessage());
             return Collections.emptyList();
         }
@@ -268,6 +326,7 @@ public class KubernetesService {
             }).collect(Collectors.toList());
 
         } catch (Exception ex) {
+            checkProductionAuthFailure(ex, "getDeployments");
             log.warn("Error fetching deployments from K8s API: {}", ex.getMessage());
             return Collections.emptyList();
         }
@@ -314,6 +373,7 @@ public class KubernetesService {
             }).collect(Collectors.toList());
 
         } catch (Exception ex) {
+            checkProductionAuthFailure(ex, "getServices");
             log.warn("Error fetching services from K8s API: {}", ex.getMessage());
             return Collections.emptyList();
         }
@@ -360,12 +420,22 @@ public class KubernetesService {
                     mem = node.getStatus().getCapacity().get("memory") != null ? node.getStatus().getCapacity().get("memory").toSuffixedString() : "N/A";
                 }
 
+                String internalIP = "N/A";
+                if (node.getStatus() != null && node.getStatus().getAddresses() != null) {
+                    for (V1NodeAddress addr : node.getStatus().getAddresses()) {
+                        if ("InternalIP".equalsIgnoreCase(addr.getType())) {
+                            internalIP = addr.getAddress();
+                            break;
+                        }
+                    }
+                }
+
                 return K8sNodeDto.builder()
                         .name(node.getMetadata() != null ? node.getMetadata().getName() : "unknown")
                         .status(status)
                         .role(role)
                         .kubeletVersion(kubeletVersion)
-                        .internalIP("192.168.49.2")
+                        .internalIP(internalIP)
                         .cpuCapacity(cpu)
                         .memoryCapacity(mem)
                         .creationTimestamp(node.getMetadata() != null && node.getMetadata().getCreationTimestamp() != null
@@ -374,6 +444,7 @@ public class KubernetesService {
             }).collect(Collectors.toList());
 
         } catch (Exception ex) {
+            checkProductionAuthFailure(ex, "getNodes");
             log.warn("Error fetching nodes from K8s API: {}", ex.getMessage());
             return Collections.emptyList();
         }
@@ -399,6 +470,7 @@ public class KubernetesService {
                     .build()).collect(Collectors.toList());
 
         } catch (Exception ex) {
+            checkProductionAuthFailure(ex, "getNamespaces");
             log.warn("Error fetching namespaces from K8s API: {}", ex.getMessage());
             return Collections.emptyList();
         }
@@ -433,6 +505,7 @@ public class KubernetesService {
                     .build()).collect(Collectors.toList());
 
         } catch (Exception ex) {
+            checkProductionAuthFailure(ex, "getEvents");
             log.warn("Error fetching events from K8s API: {}", ex.getMessage());
             return Collections.emptyList();
         }

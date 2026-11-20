@@ -78,13 +78,20 @@ export const copilotApi = {
 
   chat: async (message: string, namespace = 'payment', podName = 'payment-processor-78d9b-x92q'): Promise<CopilotResponse> => {
     try {
+      const token = localStorage.getItem('kubemind_access_token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       const response = await axios.post(`${AI_SERVICE_URL}/copilot/chat`, {
         message,
         namespace,
         podName,
-      });
+      }, { headers });
       return response.data;
-    } catch (ex) {
+    } catch {
       const fixCmd = podName.includes('demo') 
         ? `kubectl set resources deployment/live-demo-app -n ${namespace} --limits=memory=1024Mi --requests=memory=512Mi`
         : `kubectl delete pod ${podName} -n ${namespace} && kubectl run ${podName} --image=polinux/stress -n ${namespace} --limits=memory=1024Mi`;

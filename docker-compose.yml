@@ -9,15 +9,22 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-kubemind}
       POSTGRES_USER: ${POSTGRES_USER:-kubemind_admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kubemind_secure_password_2026}
-    # Internal Docker network connection (no host port conflict)
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD environment variable is required}"
+    # Kept on internal Docker network without host port publication
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kubemind_admin} -d ${POSTGRES_DB:-kubemind}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kubemind_admin} -d ${POSTGRES_DB:-kubemind}" ]
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    networks:
+      - kubemind-net
 
   # ---------------------------------------------------------------------------
   # 2. Backend API Gateway Layer: Spring Boot 3 & Java 21
@@ -35,20 +42,39 @@ services:
       SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-kubemind}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-kubemind_admin}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-kubemind_secure_password_2026}
-      JWT_SECRET: ${JWT_SECRET:-9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b}
+      SPRING_DATASOURCE_PASSWORD: "${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD environment variable is required}"
+
+      KUBEMIND_INITIAL_ADMIN_USERNAME: ${KUBEMIND_INITIAL_ADMIN_USERNAME:-}
+      KUBEMIND_INITIAL_ADMIN_EMAIL: ${KUBEMIND_INITIAL_ADMIN_EMAIL:-}
+      KUBEMIND_INITIAL_ADMIN_PASSWORD: ${KUBEMIND_INITIAL_ADMIN_PASSWORD:-}
+
+      KUBEMIND_SETUP_TOKEN: ${KUBEMIND_SETUP_TOKEN:-}
+
+      JWT_SECRET: "${JWT_SECRET:?Error: JWT_SECRET environment variable is required}"
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
       PROMETHEUS_URL: ${PROMETHEUS_URL:-http://prometheus:9090}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPOS: ${GITHUB_REPOS:-}
       GRAFANA_URL: ${GRAFANA_URL:-}
       GRAFANA_API_KEY: ${GRAFANA_API_KEY:-}
     ports:
-      - "8080:8080"
-    volumes:
-      - ~/.kube/config:/root/.kube/config:ro
+      - "127.0.0.1:8080:8080"
     extra_hosts:
       - "kubernetes.docker.internal:host-gateway"
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/v1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1024M
+    networks:
+      - kubemind-net
 
   # ---------------------------------------------------------------------------
   # 2b. Metrics Layer: Prometheus
@@ -58,12 +84,19 @@ services:
     container_name: kubemind-prometheus
     restart: always
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    networks:
+      - kubemind-net
 
   # ---------------------------------------------------------------------------
-  # 3. Model Context Protocol (MCP) Server: Python FastAPI
+  # 3. Model Context Protocol (MCP) Server: Python FastAPI (Private Network)
   # ---------------------------------------------------------------------------
   mcp-server:
     build:
@@ -76,8 +109,20 @@ services:
     environment:
       BACKEND_URL: http://backend:8080/api/v1
       PORT: 8001
-    ports:
-      - "8001:8001"
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\" || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+    networks:
+      - kubemind-net
 
   # ---------------------------------------------------------------------------
   # 4. AI Subsystem Microservice: Python FastAPI
@@ -90,8 +135,24 @@ services:
     restart: always
     environment:
       PORT: 8000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
+      MCP_API_KEY: ${INTERNAL_API_KEY:-}
+      MCP_SERVER_URL: http://mcp-server:8001/mcp/call
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1024M
+    networks:
+      - kubemind-net
 
   # ---------------------------------------------------------------------------
   # 5. Frontend Command Center Interface: React 19 & Vite (Nginx)
@@ -105,7 +166,24 @@ services:
     depends_on:
       - backend
     ports:
-      - "3000:80"
+      - "127.0.0.1:3000:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    networks:
+      - kubemind-net
 
 volumes:
   postgres_data:
+
+networks:
+  kubemind-net:
+    driver: bridge

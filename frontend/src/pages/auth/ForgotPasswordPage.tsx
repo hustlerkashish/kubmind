@@ -39,9 +39,11 @@ export function ForgotPasswordPage() {
       if (response.data.success) {
         const token = response.data.data?.resetToken || '';
         setIssuedToken(token);
-        resetForm.setValue('token', token);
+        if (token) {
+          resetForm.setValue('token', token);
+        }
         setStep('reset');
-        success('Reset Token Dispatched', 'Check your token below to authorize password update.');
+        success('Reset Instructions Dispatched', 'Check your email for your password reset link or token.');
       }
     } catch (err: any) {
       const message = err.response?.data?.message || 'Failed to request password reset.';
@@ -118,10 +120,17 @@ export function ForgotPasswordPage() {
           </form>
         ) : (
           <form onSubmit={resetForm.handleSubmit(onResetSubmit)} className="space-y-4">
-            <div className="p-3 rounded-lg border border-cyan-500/30 bg-cyan-950/20 text-xs text-cyan-200 font-mono">
-              <p className="font-semibold text-cyan-400 mb-0.5">Authorization Reset Token:</p>
-              <p className="break-all text-[11px] select-all">{issuedToken}</p>
-            </div>
+            {issuedToken ? (
+              <div className="p-3 rounded-lg border border-cyan-500/30 bg-cyan-950/20 text-xs text-cyan-200 font-mono">
+                <p className="font-semibold text-cyan-400 mb-0.5">Authorization Reset Token:</p>
+                <p className="break-all text-[11px] select-all">{issuedToken}</p>
+              </div>
+            ) : (
+              <div className="p-3 rounded-lg border border-blue-500/30 bg-blue-950/20 text-xs text-blue-200">
+                <p className="font-semibold text-blue-400 mb-0.5">Check Your Email</p>
+                <p className="text-[11px]">If an account exists, a secure one-time reset token was dispatched. Enter it below to update your password.</p>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">Reset Token</label>
