@@ -50,6 +50,8 @@ public class AuthController {
     @PostMapping("/refresh")
     @Operation(summary = "Exchange valid refresh token for a new access token")
     public ResponseEntity<ApiResponse<TokenRefreshResponse>> refreshToken(@Valid @RequestBody TokenRefreshRequest request) {
+    public ResponseEntity<ApiResponse<TokenRefreshResponse>> refreshToken(
+            @Valid @RequestBody TokenRefreshRequest request) {
         TokenRefreshResponse response = authService.refreshToken(request);
         return ResponseEntity.ok(ApiResponse.success(response, "Token refreshed successfully"));
     }
@@ -71,6 +73,7 @@ public class AuthController {
                 null,
                 "If an account exists with that email address, password reset instructions have been dispatched."
         ));
+                "If an account exists with that email address, password reset instructions have been dispatched."));
     }
 
     @PostMapping("/reset-password")
@@ -78,5 +81,7 @@ public class AuthController {
     public ResponseEntity<ApiResponse<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         authService.resetPassword(request);
         return ResponseEntity.ok(ApiResponse.success(null, "Password reset successfully. You can now login with your new credentials."));
+        return ResponseEntity.ok(
+                ApiResponse.success(null, "Password reset successfully. You can now login with your new credentials."));
     }
 }
