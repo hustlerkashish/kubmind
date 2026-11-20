@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/kubemind/kubemind-frontend:v1.0.0
+          image: ghcr.io/hustlerkashish/kubemind-frontend:sha-84ccd587
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80

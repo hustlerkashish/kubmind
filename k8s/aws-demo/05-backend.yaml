@@ -24,7 +24,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: backend
-          image: ghcr.io/kubemind/kubemind-backend:v1.0.0
+          image: ghcr.io/hustlerkashish/kubemind-backend:sha-84ccd587
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false

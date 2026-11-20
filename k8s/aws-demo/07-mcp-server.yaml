@@ -24,7 +24,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: mcp-server
-          image: ghcr.io/kubemind/mcp-server:v1.0.0
+          image: ghcr.io/hustlerkashish/kubemind-mcp-server:sha-84ccd587
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
