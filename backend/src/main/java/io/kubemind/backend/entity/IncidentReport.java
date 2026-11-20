@@ -40,7 +40,7 @@ public class IncidentReport {
     @Column(columnDefinition = "TEXT")
     private String summaryJson;
 
-    @Column(name = "summary_json_b", columnDefinition = "jsonb")
+    @Column(name = "summary_json_b", columnDefinition = "TEXT")
     private String summaryJsonB;
 
     @ManyToOne(fetch = FetchType.LAZY)

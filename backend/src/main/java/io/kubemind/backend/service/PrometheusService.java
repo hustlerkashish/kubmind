@@ -96,7 +96,7 @@ public class PrometheusService {
 
     public PrometheusQueryResultDto getNetworkMetrics(String range, String promUrlOverride) {
         return executePrometheusQuery("Network RX/TX",
-                "sum(rate(node_network_receive_bytes_total[5m]))",
+                "(sum(rate(node_network_receive_bytes_total{device!=\"lo\"}[5m])) + sum(rate(node_network_transmit_bytes_total{device!=\"lo\"}[5m]))) / 1048576",
                 "MB/s", range, promUrlOverride);
     }
 
@@ -106,7 +106,7 @@ public class PrometheusService {
 
     public PrometheusQueryResultDto getDiskMetrics(String range, String promUrlOverride) {
         return executePrometheusQuery("Disk Usage",
-                "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"})) * 100",
+                "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})) * 100",
                 "%", range, promUrlOverride);
     }
 
@@ -175,23 +175,37 @@ public class PrometheusService {
                     memory = tryQuerySingleValue("(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100", activeUrl);
                 }
 
-                summary.put("cpuPercent", cpu != null ? Math.round(cpu * 10.0) / 10.0 : 42.5);
-                summary.put("memoryPercent", memory != null ? Math.round(memory * 10.0) / 10.0 : 58.1);
-                summary.put("networkMBps", 12.4);
-                summary.put("diskPercent", 34.2);
-                log.info("Live Prometheus connected at {}", activeUrl);
+                Double network = tryQuerySingleValue(
+                        "(sum(rate(node_network_receive_bytes_total{device!=\"lo\"}[5m])) + sum(rate(node_network_transmit_bytes_total{device!=\"lo\"}[5m]))) / 1048576",
+                        activeUrl);
+                Double disk = tryQuerySingleValue(
+                        "avg((1 - (node_filesystem_avail_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{mountpoint=\"/\",fstype!~\"tmpfs|overlay\"})) * 100)",
+                        activeUrl);
+
+                summary.put("cpuPercent", cpu != null ? Math.round(cpu * 10.0) / 10.0 : null);
+                summary.put("memoryPercent", memory != null ? Math.round(memory * 10.0) / 10.0 : null);
+                summary.put("networkMBps", network != null ? Math.round(network * 10000.0) / 10000.0 : null);
+                summary.put("diskPercent", disk != null ? Math.round(disk * 10.0) / 10.0 : null);
+                summary.put("livePrometheusConnected", true);
+                summary.put("telemetryAvailable",
+                        cpu != null || memory != null || network != null || disk != null);
+                log.info("Prometheus API reachable at {}; live metric availability recorded separately", activeUrl);
             } else {
+                summary.put("cpuPercent", null);
+                summary.put("memoryPercent", null);
+                summary.put("networkMBps", null);
+                summary.put("diskPercent", null);
                 summary.put("livePrometheusConnected", false);
+                summary.put("telemetryAvailable", false);
             }
         } catch (Exception e) {
-            log.warn("Prometheus ({}) unreachable for dashboard summary, supplying realistic standby telemetry: {}", activeUrl, e.getMessage());
-            long nowSec = System.currentTimeMillis() / 1000;
-            double variance = (Math.sin(nowSec / 60.0) * 3.5);
-            summary.put("cpuPercent", Math.round((38.4 + variance) * 10.0) / 10.0);
-            summary.put("memoryPercent", Math.round((64.2 + (variance / 2.0)) * 10.0) / 10.0);
-            summary.put("networkMBps", Math.round((14.5 + (variance / 3.0)) * 10.0) / 10.0);
-            summary.put("diskPercent", 28.6);
-            summary.put("livePrometheusConnected", true);
+            log.warn("Prometheus ({}) is unavailable; live dashboard telemetry cannot be provided: {}", activeUrl, e.getMessage());
+            summary.put("cpuPercent", null);
+            summary.put("memoryPercent", null);
+            summary.put("networkMBps", null);
+            summary.put("diskPercent", null);
+            summary.put("livePrometheusConnected", false);
+            summary.put("telemetryAvailable", false);
         }
         return summary;
     }
@@ -283,50 +297,14 @@ public class PrometheusService {
             log.debug("Prometheus ({}) live query fallback for '{}': {}", activeUrl, metricName, ex.getMessage());
         }
 
-        // Return high-fidelity telemetry series curve so charts render beautifully
-        List<MetricSeriesDto> fallbackSeries = generateFallbackSeries(metricName, unit, range);
+        // Never present generated telemetry as live Prometheus data.
         return PrometheusQueryResultDto.builder()
                 .queryType(metricName)
                 .range(range != null ? range : "1h")
-                .livePrometheusConnected(true)
-                .series(fallbackSeries)
+                .livePrometheusConnected(false)
+                .series(List.of())
                 .build();
     }
 
-    private List<MetricSeriesDto> generateFallbackSeries(String metricName, String unit, String range) {
-        long now = System.currentTimeMillis() / 1000;
-        int points = 12;
-        long step = 300; // 5 mins
-        if ("5m".equals(range)) step = 25;
-        else if ("6h".equals(range)) step = 1800;
-        else if ("24h".equals(range)) step = 7200;
-        else if ("7d".equals(range)) step = 50400;
 
-        List<MetricDatapointDto> datapoints = new ArrayList<>();
-        double base = switch (metricName) {
-            case "CPU Load" -> 36.0;
-            case "Memory Usage" -> 64.0;
-            case "Network RX/TX" -> 14.5;
-            case "Disk Usage" -> 28.6;
-            case "Node Load" -> 1.4;
-            default -> 42.0;
-        };
-
-        for (int i = points - 1; i >= 0; i--) {
-            long ts = now - (i * step);
-            double wave = Math.sin((ts % 3600) / 300.0) * 4.5;
-            double val = Math.max(5.0, Math.round((base + wave) * 10.0) / 10.0);
-            datapoints.add(MetricDatapointDto.builder()
-                    .timestamp(String.valueOf(ts))
-                    .value(val)
-                    .build());
-        }
-
-        return List.of(MetricSeriesDto.builder()
-                .metricName(metricName)
-                .target("cluster-aggregate")
-                .unit(unit)
-                .datapoints(datapoints)
-                .build());
-    }
 }

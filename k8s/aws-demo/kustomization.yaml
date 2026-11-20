@@ -12,4 +12,6 @@ resources:
   - 06-ai-service.yaml
   - 07-mcp-server.yaml
   - 08-frontend.yaml
-  - 09-ingress.yaml
+  - monitoring/01-prometheus-config.yaml
+  - monitoring/02-prometheus.yaml
+  - monitoring/03-node-exporter.yaml

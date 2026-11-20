@@ -35,10 +35,10 @@ public class AuditLog {
     @Column(nullable = false, length = 50)
     private String action;
 
-    @Column(columnDefinition = "jsonb")
+    @Column(columnDefinition = "TEXT")
     private String oldValue;
 
-    @Column(columnDefinition = "jsonb")
+    @Column(columnDefinition = "TEXT")
     private String newValue;
 
     @CreatedDate
