@@ -102,16 +102,31 @@ LIVE MCP EVIDENCE:
 
         client = genai.Client(api_key=api_key)
 
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.info("Gemini request started. Model: %s", model)
+
         response = await client.aio.models.generate_content(
             model=model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                temperature=0.2
+                temperature=0.2,
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                    disable=True
+                ),
+                http_options=types.HttpOptions(timeout=45000)
             )
         )
 
+        logger.info("Gemini generate_content returned successfully.")
+
         response_text = (response.text or "").strip()
+        logger.info(
+            "Gemini response text extracted. Characters: %d",
+            len(response_text)
+        )
         if not response_text:
             raise RuntimeError("Gemini returned an empty response.")
 
