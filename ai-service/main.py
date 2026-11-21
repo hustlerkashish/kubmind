@@ -1,116 +1,156 @@
-import os
+import logging
 import secrets
+from typing import Optional
+
 from fastapi import FastAPI, HTTPException, Security, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field
 
 from agent.state import AgentState
 from agent.graph import build_agent_graph
 from config import PORT, INTERNAL_API_KEY, ALLOWED_ORIGINS
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("kubemind.ai")
+
 app = FastAPI(
     title="KubeMind AI Copilot Agent Service",
-    description="LangGraph-powered AI Agent for Kubernetes Root Cause Analysis, Stderr Log Ingestion & Remediation",
-    version="1.0.0"
+    description="Gemini-powered Kubernetes analysis using live MCP evidence",
+    version="1.1.0"
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
 api_key_header = APIKeyHeader(name="X-Internal-API-Key", auto_error=False)
 bearer_scheme = HTTPBearer(auto_error=False)
 
+
 def verify_internal_auth(
     api_key: Optional[str] = Security(api_key_header),
     bearer: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme)
 ):
-    """Enforces API key authentication on protected AI Copilot endpoints."""
-    if INTERNAL_API_KEY:
-        provided = api_key or (bearer.credentials if bearer else None)
-        if not provided or not secrets.compare_digest(provided, INTERNAL_API_KEY):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unauthorized: Missing or invalid API key for AI Copilot Service."
-            )
+    if not INTERNAL_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI service internal authentication is not configured."
+        )
+
+    provided = api_key or (bearer.credentials if bearer else None)
+
+    if not provided or not secrets.compare_digest(provided, INTERNAL_API_KEY):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: missing or invalid internal API key."
+        )
+
     return True
+
 
 agent_executor = build_agent_graph()
 
+
 class ChatRequest(BaseModel):
-    message: str
-    namespace: Optional[str] = "payment"
-    podName: Optional[str] = "payment-processor-78d9b-x92q"
-    containerName: Optional[str] = None
+    message: str = Field(min_length=1, max_length=10000)
+    namespace: Optional[str] = Field(default=None, max_length=253)
+    podName: Optional[str] = Field(default=None, max_length=253)
+    containerName: Optional[str] = Field(default=None, max_length=253)
+
 
 class RcaRequest(BaseModel):
-    namespace: Optional[str] = "payment"
-    podName: str = "payment-processor-78d9b-x92q"
+    namespace: Optional[str] = Field(default=None, max_length=253)
+    podName: str = Field(min_length=1, max_length=253)
+
 
 @app.get("/health")
 def health_check():
-    """Unauthenticated health probe endpoint for Docker and Kubernetes liveness checks."""
     return {
         "status": "UP",
         "service": "KubeMind AI Agent Service",
-        "framework": "LangGraph v0.1"
+        "framework": "FastAPI + Gemini + MCP"
     }
 
-@app.post("/api/v1/copilot/chat", dependencies=[Depends(verify_internal_auth)])
+
+@app.post(
+    "/api/v1/copilot/chat",
+    dependencies=[Depends(verify_internal_auth)]
+)
 async def copilot_chat(request: ChatRequest):
-    """Executes full LangGraph AI Agent graph for interactive user chat queries."""
+    if not request.message.strip():
+        raise HTTPException(status_code=422, detail="Message cannot be blank.")
+
     initial_state = AgentState(
-        user_prompt=request.message,
+        user_prompt=request.message.strip(),
         namespace=request.namespace,
         pod_name=request.podName,
         container_name=request.containerName
     )
 
     try:
-        final_state = await agent_executor.ainvoke(initial_state)
+        result = await agent_executor.ainvoke(initial_state)
 
-        # Handle dict or AgentState object response from LangGraph compiled graph
-        if isinstance(final_state, dict):
-            reply = final_state.get("final_reply", "RCA pipeline executed.")
-            tools = final_state.get("executed_tools", [])
-            reason = final_state.get("detected_reason", "OOMKilled")
-            confidence = final_state.get("confidence_score", 98)
-            summary = final_state.get("ai_summary", "Diagnostic complete.")
-            command = final_state.get("remediation_command", "kubectl top pod")
-        else:
-            reply = final_state.final_reply
-            tools = final_state.executed_tools
-            reason = final_state.detected_reason
-            confidence = final_state.confidence_score
-            summary = final_state.ai_summary
-            command = final_state.remediation_command
+        if not isinstance(result, dict):
+            raise RuntimeError("Agent returned an unsupported response format.")
 
-        return {
-            "status": "SUCCESS",
-            "reply": reply,
-            "toolsExecuted": tools,
-            "diagnosis": {
-                "reason": reason,
-                "confidenceScore": confidence,
-                "summary": summary,
-                "remediationCommand": command
-            }
-        }
-    except Exception as ex:
-        raise HTTPException(status_code=500, detail=f"AI Agent graph execution error: {str(ex)}")
+        diagnosis = result.get("diagnosis")
+        tools = result.get("toolsExecuted")
+        reply = result.get("reply")
 
-@app.post("/api/v1/rca/analyze", dependencies=[Depends(verify_internal_auth)])
+        if (
+            result.get("status") != "SUCCESS"
+            or not isinstance(reply, str)
+            or not reply.strip()
+            or not isinstance(diagnosis, dict)
+            or not isinstance(tools, list)
+        ):
+            raise RuntimeError("Agent returned an incomplete response.")
+
+        required_diagnosis_fields = (
+            "reason",
+            "confidenceScore",
+            "summary",
+            "remediationCommand"
+        )
+
+        if any(field not in diagnosis for field in required_diagnosis_fields):
+            raise RuntimeError("Agent diagnosis is missing required fields.")
+
+        return result
+
+    except Exception as exc:
+        logger.exception("Copilot request failed")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI analysis failed. Check the AI service logs and verify Gemini and MCP connectivity."
+        ) from exc
+
+
+@app.post(
+    "/api/v1/rca/analyze",
+    dependencies=[Depends(verify_internal_auth)]
+)
 async def analyze_incident(request: RcaRequest):
-    """Triggers automated RCA analysis for target pod."""
-    prompt = f"Analyze incident on pod {request.podName} in namespace {request.namespace}"
-    return await copilot_chat(ChatRequest(message=prompt, namespace=request.namespace, podName=request.podName))
+    prompt = (
+        f"Analyze the live Kubernetes evidence for pod {request.podName} "
+        f"in namespace {request.namespace or 'all'}. "
+        "Identify confirmed symptoms, likely causes, and safe remediation suggestions."
+    )
+
+    return await copilot_chat(
+        ChatRequest(
+            message=prompt,
+            namespace=request.namespace,
+            podName=request.podName
+        )
+    )
+
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=PORT, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=PORT)

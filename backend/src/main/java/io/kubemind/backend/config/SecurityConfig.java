@@ -1,5 +1,7 @@
 package io.kubemind.backend.config;
 
+import io.kubemind.backend.security.InternalApiKeyAuthenticationFilter;
+
 import io.kubemind.backend.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -24,6 +26,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final InternalApiKeyAuthenticationFilter internalApiKeyAuthenticationFilter;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -44,6 +47,7 @@ public class SecurityConfig {
                 );
 
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        http.addFilterBefore(internalApiKeyAuthenticationFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }

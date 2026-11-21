@@ -1,119 +1,162 @@
-from langgraph.graph import StateGraph, END
+import json
+import os
+from typing import Any
+
+from google import genai
+from google.genai import types
+
+from agent.diagnostic_engine import require_evidence
+from agent.mcp_client import MCPClient
 from agent.state import AgentState
-from agent.mcp_client import invoke_mcp_tool
-from agent.diagnostic_engine import diagnose_failure_mode
 
-import re
 
-async def intent_recognition_node(state: AgentState) -> dict:
-    """Node 1: Analyzes user prompt intent and sets pod/namespace targets."""
-    prompt = state.user_prompt or ""
-    pod = state.pod_name
-    ns = state.namespace
+class KubeMindAgent:
+    async def ainvoke(self, state: AgentState | dict[str, Any]):
+        if isinstance(state, dict):
+            user_prompt = state.get("user_prompt", "")
+            namespace = state.get("namespace")
+            pod_name = state.get("pod_name")
+            container_name = state.get("container_name")
+        else:
+            user_prompt = state.user_prompt
+            namespace = state.namespace
+            pod_name = state.pod_name
+            container_name = state.container_name
 
-    # Extract target pod name dynamically from natural language prompt
-    pod_match = re.search(r'(?:pod|on|container|inspect)\s+([a-zA-Z0-9\-_]+)', prompt, re.IGNORECASE)
-    if pod_match and pod_match.group(1).lower() not in ['the', 'a', 'my', 'in', 'default', 'this', 'incident', 'memory']:
-        pod = pod_match.group(1)
-    elif not pod:
-        pod = "memory-crash-pod"
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY is not configured.")
 
-    # Extract namespace if specified in prompt
-    ns_match = re.search(r'(?:namespace|in)\s+([a-zA-Z0-9\-_]+)', prompt, re.IGNORECASE)
-    if ns_match and ns_match.group(1).lower() not in ['the', 'a', 'crash']:
-        ns = ns_match.group(1)
-    elif "default" in prompt.lower():
-        ns = "default"
-    elif not ns:
-        ns = "default"
+        model = os.getenv("GEMINI_MODEL") or os.getenv("DEFAULT_MODEL") or "gemini-3-flash-preview"
+        mcp = MCPClient()
 
-    return {
-        "pod_name": pod,
-        "namespace": ns,
-        "executed_tools": ["intent_recognition"]
-    }
+        # Collect actual cluster evidence. A failed MCP request is an error,
+        # never an empty successful result.
+        evidence = {
+            "namespace": namespace or "all",
+            "requested_pod": pod_name,
+            "pods": await mcp.call_tool(
+                "getPods",
+                {"namespace": namespace or "all"}
+            ),
+            "events": await mcp.call_tool(
+                "getEvents",
+                {"namespace": namespace or "all"}
+            )
+        }
 
-async def mcp_ingestion_node(state: AgentState) -> dict:
-    """Node 2: Connects to MCP Server and executes getLogs, filterErrors & getEvents."""
-    pod = state.pod_name or "memory-crash-pod"
-    ns = state.namespace or "default"
+        executed_tools = ["getPods", "getEvents"]
 
-    tools = list(state.executed_tools)
+        if pod_name:
+            log_arguments = {
+                "namespace": namespace or "default",
+                "pod_name": pod_name,
+                "tail_lines": 100
+            }
+            if container_name:
+                log_arguments["container"] = container_name
 
-    # 1. Fetch live pod logs via MCP
-    log_data = await invoke_mcp_tool("getLogs", {"namespace": ns, "pod_name": pod, "tail_lines": 50})
-    raw_logs = log_data.get("logs", [])
-    tools.append("getLogs")
+            evidence["pod_logs"] = await mcp.call_tool(
+                "getLogs",
+                log_arguments
+            )
+            executed_tools.append("getLogs")
 
-    # 2. Filter error lines via MCP
-    filter_data = await invoke_mcp_tool("filterErrors", {"raw_logs": raw_logs})
-    filtered_errors = filter_data.get("errors", [])
-    tools.append("filterErrors")
+        evidence = require_evidence(evidence)
 
-    # 3. Get cluster events feed via MCP
-    events = await invoke_mcp_tool("getEvents", {"namespace": ns})
-    tools.append("getEvents")
+        prompt = f"""
+You are KubeMind, a Kubernetes incident-analysis assistant.
 
-    return {
-        "raw_logs": raw_logs,
-        "filtered_errors": filtered_errors,
-        "mcp_telemetry": {"events": events},
-        "executed_tools": tools
-    }
+Analyze the user's request using ONLY the live cluster evidence supplied
+below. The evidence comes from successful MCP tool calls.
 
-async def diagnostic_analysis_node(state: AgentState) -> dict:
-    """Node 3: Runs rule-based diagnostic engine over ingested logs & events."""
-    pod = state.pod_name or "memory-crash-pod"
-    ns = state.namespace or "default"
-    events = state.mcp_telemetry.get("events", [])
+Rules:
+- Never invent pods, events, logs, metrics, incidents, or tool executions.
+- Do not assume an incident type without supporting evidence.
+- If evidence is insufficient, clearly say what additional information is needed.
+- Distinguish observed facts from possible explanations.
+- Remediation commands are suggestions only. They are NOT executed.
+- Never claim that a remediation was applied.
+- Do not claim CPU or memory values unless they appear in the evidence.
+- Do not claim a pod is unhealthy unless the evidence supports that.
+- Keep the response useful, clear, and technically precise.
+- Confidence must be an integer from 0 to 100 and reflect evidence quality.
+- If there is no confirmed incident, use "Insufficient evidence" as the reason,
+  set confidenceScore to 0, and leave remediationCommand empty.
 
-    reason, confidence, summary, command = diagnose_failure_mode(
-        prompt=state.user_prompt,
-        pod_name=pod,
-        namespace=ns,
-        raw_logs=state.raw_logs,
-        filtered_errors=state.filtered_errors,
-        events=events if isinstance(events, list) else []
-    )
+Return ONLY a valid JSON object with these fields:
+{{
+  "reply": "Readable response for the user",
+  "reason": "Evidence-supported incident reason or Insufficient evidence",
+  "confidenceScore": 0,
+  "summary": "Short evidence-based summary",
+  "remediationCommand": "Safe suggested command, or empty string"
+}}
 
-    return {
-        "detected_reason": reason,
-        "confidence_score": confidence,
-        "ai_summary": summary,
-        "remediation_command": command
-    }
+USER REQUEST:
+{user_prompt}
 
-async def synthesis_output_node(state: AgentState) -> dict:
-    """Node 4: Formulates final structured AI Agent markdown reply."""
-    reply = (
-        f"### 🤖 KubeMind AI Agent Root Cause Analysis Report\n\n"
-        f"**Target Pod:** `{state.pod_name}`  \n"
-        f"**Namespace:** `{state.namespace}`  \n"
-        f"**Diagnosed Failure Mode:** `{state.detected_reason}` (**{state.confidence_score}% Confidence**)\n\n"
-        f"#### 🔍 Executive Diagnostic Synthesis\n"
-        f"{state.ai_summary}\n\n"
-        f"#### 🛠️ Executed MCP Tooling Stack\n"
-        f"The AI Agent invoked the following MCP tools: "
-        + ", ".join([f"`{t}`" for t in state.executed_tools]) + "\n\n"
-        f"#### ⚡ Recommended Remediation Action\n"
-        f"```bash\n{state.remediation_command}\n```"
-    )
+LIVE MCP EVIDENCE:
+{json.dumps(evidence, default=str)[:40000]}
+"""
 
-    return {"final_reply": reply}
+        client = genai.Client(api_key=api_key)
+
+        response = await client.aio.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.2
+            )
+        )
+
+        response_text = (response.text or "").strip()
+        if not response_text:
+            raise RuntimeError("Gemini returned an empty response.")
+
+        try:
+            result = json.loads(response_text)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Gemini returned invalid JSON.") from exc
+
+        required_fields = (
+            "reply",
+            "reason",
+            "confidenceScore",
+            "summary",
+            "remediationCommand"
+        )
+        if not isinstance(result, dict) or any(
+            field not in result for field in required_fields
+        ):
+            raise RuntimeError("Gemini response is missing required diagnosis fields.")
+
+        confidence = result["confidenceScore"]
+        if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+            raise RuntimeError("Gemini returned an invalid confidence score.")
+
+        result["confidenceScore"] = max(0, min(100, int(confidence)))
+
+        reply = result["reply"]
+        if not isinstance(reply, str) or not reply.strip():
+            raise RuntimeError("Gemini returned an empty user response.")
+
+        tools_executed = executed_tools
+
+        return {
+            "status": "SUCCESS",
+            "reply": reply.strip(),
+            "toolsExecuted": tools_executed,
+            "diagnosis": {
+                "reason": str(result["reason"]),
+                "confidenceScore": result["confidenceScore"],
+                "summary": str(result["summary"]),
+                "remediationCommand": str(result["remediationCommand"] or "")
+            },
+            "model": model
+        }
+
 
 def build_agent_graph():
-    """Builds and compiles the LangGraph StateGraph pipeline."""
-    workflow = StateGraph(AgentState)
-
-    workflow.add_node("intent_recognition", intent_recognition_node)
-    workflow.add_node("mcp_ingestion", mcp_ingestion_node)
-    workflow.add_node("diagnostic_analysis", diagnostic_analysis_node)
-    workflow.add_node("synthesis_output", synthesis_output_node)
-
-    workflow.set_entry_point("intent_recognition")
-    workflow.add_edge("intent_recognition", "mcp_ingestion")
-    workflow.add_edge("mcp_ingestion", "diagnostic_analysis")
-    workflow.add_edge("diagnostic_analysis", "synthesis_output")
-    workflow.add_edge("synthesis_output", END)
-
-    return workflow.compile()
+    return KubeMindAgent()

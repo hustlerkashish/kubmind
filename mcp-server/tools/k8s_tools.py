@@ -1,53 +1,74 @@
 import httpx
-from config import BACKEND_URL
+from config import BACKEND_URL, INTERNAL_API_KEY
+
+
+async def _get_backend_data(path: str, params: dict | None = None, expected_type=None):
+    if not INTERNAL_API_KEY:
+        raise RuntimeError("INTERNAL_API_KEY is not configured in MCP server")
+
+    url = f"{BACKEND_URL.rstrip('/')}{path}"
+    headers = {"X-Internal-API-Key": INTERNAL_API_KEY}
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.get(url, params=params, headers=headers)
+        if response.is_error:
+            raise RuntimeError(
+                f"Backend request {path} failed with HTTP {response.status_code}"
+            )
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise RuntimeError(f"Backend returned invalid JSON for {path}") from exc
+
+    if not isinstance(payload, dict) or "data" not in payload:
+        raise RuntimeError(f"Backend response for {path} has no data field")
+
+    if payload.get("success") is False:
+        raise RuntimeError(f"Backend reported failure for {path}")
+
+    data = payload["data"]
+
+    if expected_type is not None and not isinstance(data, expected_type):
+        raise RuntimeError(f"Backend returned an invalid data type for {path}")
+
+    return data
+
 
 async def get_pods(namespace: str = "all"):
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            res = await client.get(f"{BACKEND_URL}/k8s/pods", params={"namespace": namespace})
-            return res.json().get("data", [])
-        except Exception as e:
-            return [{"name": "auth-service-7f89b-9x2l", "namespace": "production", "status": "Running", "restartCount": 0}]
+    return await _get_backend_data(
+        "/k8s/pods", {"namespace": namespace}, list
+    )
+
 
 async def get_deployments(namespace: str = "all"):
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            res = await client.get(f"{BACKEND_URL}/k8s/deployments", params={"namespace": namespace})
-            return res.json().get("data", [])
-        except Exception as e:
-            return [{"name": "auth-gateway-proxy", "namespace": "production", "status": "HEALTHY", "desiredReplicas": 4, "availableReplicas": 4}]
+    return await _get_backend_data(
+        "/k8s/deployments", {"namespace": namespace}, list
+    )
+
 
 async def get_nodes():
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            res = await client.get(f"{BACKEND_URL}/k8s/nodes")
-            return res.json().get("data", [])
-        except Exception as e:
-            return [{"name": "minikube", "status": "Ready", "role": "Control Plane", "cpuCapacity": "8 Cores", "memoryCapacity": "16 GB"}]
+    return await _get_backend_data("/k8s/nodes", expected_type=list)
+
 
 async def get_events(namespace: str = "all"):
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            res = await client.get(f"{BACKEND_URL}/k8s/events", params={"namespace": namespace})
-            return res.json().get("data", [])
-        except Exception as e:
-            return [{"type": "Warning", "reason": "Unhealthy", "message": "Liveness probe failed", "involvedObject": "Pod/payment-worker"}]
+    return await _get_backend_data(
+        "/k8s/events", {"namespace": namespace}, list
+    )
 
-async def get_logs(namespace: str = "production", pod_name: str = "auth-service-7f89b-9x2l", container: str = None, tail_lines: int = 100):
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            params = {"tailLines": tail_lines}
-            if container:
-                params["container"] = container
-            res = await client.get(f"{BACKEND_URL}/k8s/pods/{namespace}/{pod_name}/logs", params=params)
-            return res.json().get("data", {})
-        except Exception as e:
-            return {
-                "podName": pod_name,
-                "namespace": namespace,
-                "logs": [
-                    "[INFO] Starting container worker daemon",
-                    "[ERROR] [CrashLoopBackOff] Exit code 137 triggered",
-                    "[FATAL] [OOMKilled] Memory limit of 512Mi exceeded"
-                ]
-            }
+
+async def get_logs(
+    pod_name: str,
+    namespace: str = "default",
+    container: str = None,
+    tail_lines: int = 100
+):
+    params = {"tailLines": tail_lines}
+    if container:
+        params["container"] = container
+
+    return await _get_backend_data(
+        f"/k8s/pods/{namespace}/{pod_name}/logs",
+        params,
+        dict
+    )

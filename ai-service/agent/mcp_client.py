@@ -1,27 +1,32 @@
+import os
 import httpx
-from config import MCP_SERVER_URL, MCP_API_KEY
 
-async def invoke_mcp_tool(tool_name: str, arguments: dict = None):
-    """Executes target tool on the KubeMind MCP Protocol Server with API key authentication."""
-    if arguments is None:
-        arguments = {}
-        
-    payload = {
-        "name": tool_name,
-        "arguments": arguments
-    }
-    
-    headers = {}
-    if MCP_API_KEY:
-        headers["X-Internal-API-Key"] = MCP_API_KEY
-    
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            res = await client.post(MCP_SERVER_URL, json=payload, headers=headers)
-            if res.status_code == 200:
-                data = res.json()
-                return data.get("result", {})
-    except Exception:
-        pass
-        
-    return {}
+
+class MCPClient:
+    def __init__(self):
+        self.base_url = os.getenv(
+            "MCP_SERVER_URL",
+            "http://mcp-server.kubemind.svc.cluster.local:8001"
+        ).rstrip("/")
+        self.api_key = os.getenv("INTERNAL_API_KEY", "")
+
+        if not self.api_key:
+            raise RuntimeError("INTERNAL_API_KEY is not configured for the AI service.")
+
+    async def call_tool(self, name: str, arguments: dict | None = None):
+        headers = {"X-Internal-API-Key": self.api_key}
+        payload = {"name": name, "arguments": arguments or {}}
+
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            response = await client.post(
+                f"{self.base_url}/mcp/call",
+                json=payload,
+                headers=headers
+            )
+            response.raise_for_status()
+            result = response.json()
+
+        if result.get("status") != "SUCCESS":
+            raise RuntimeError(f"MCP tool {name} did not return SUCCESS.")
+
+        return result.get("result")

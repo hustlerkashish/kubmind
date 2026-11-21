@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { PageHeader } from '@/components/common/PageHeader';
-import { copilotApi, CopilotResponse, ChatSession } from '@/services/copilotService';
+import {
+  copilotApi,
+  type CopilotResponse,
+  type ChatSession,
+  type ChatMessage as StoredChatMessage,
+} from '@/services/copilotService';
 import { MarkdownMessage } from '@/components/copilot/MarkdownMessage';
 import { usePods } from '@/hooks/useKubernetes';
-
 import {
   Bot,
   Send,
@@ -20,141 +24,246 @@ import {
   ChevronDown,
   ShieldAlert,
 } from 'lucide-react';
-import { useToast } from '@/context/ToastContext';
 
 interface ChatMessage {
   id: string;
   sender: 'user' | 'assistant';
   content: string;
-  responseMeta?: CopilotResponse;
   timestamp: string;
+  responseMeta?: CopilotResponse;
+  toolsExecuted?: string[];
+  confidenceScore?: number;
+  remediationCommand?: string;
+}
+
+function formatTime(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function parseTools(value?: string): string[] {
+  if (!value) return [];
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item): item is string => typeof item === 'string');
+    }
+  } catch {
+    // Older persisted records may contain comma-separated tool names.
+  }
+
+  return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+function mapStoredMessage(message: StoredChatMessage): ChatMessage {
+  return {
+    id: message.id,
+    sender: message.sender,
+    content: message.content,
+    timestamp: formatTime(message.createdAt),
+    toolsExecuted: parseTools(message.toolsExecuted),
+    confidenceScore: message.confidenceScore,
+    remediationCommand: message.remediationCommand,
+  };
 }
 
 export function CopilotChatPage() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string>('a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d');
+  const [activeSessionId, setActiveSessionId] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
-  const [targetPod, setTargetPod] = useState('memory-crash-pod');
-  const [targetNamespace, setTargetNamespace] = useState('default');
+  const [targetPodKey, setTargetPodKey] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const [showSessionsDropdown, setShowSessionsDropdown] = useState(false);
+  const [error, setError] = useState('');
 
   const { data: livePods = [] } = usePods('all');
-  const { success } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesRequestRef = useRef(0);
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'msg-0',
-      sender: 'assistant',
-      content:
-        'Hello Operator! I am your **KubeMind LangGraph AI Copilot**.\n\nI analyze container crash logs, evaluate Linux Kernel exit codes, diagnose **OOMKilled**, **CrashLoopBackOff**, and **ImagePullBackOff** alerts, and formulate executable remediation fixes.\n\nSelect a live pod above or ask any diagnostic question below!',
-      timestamp: 'Just now',
-    },
-  ]);
+  const selectedPod = livePods.find(
+    (pod) => `${pod.namespace}/${pod.name}` === targetPodKey,
+  );
+
+  const activeSessionTitle =
+    sessions.find((session) => session.id === activeSessionId)?.sessionTitle ||
+    'New conversation';
 
   useEffect(() => {
-    loadSessions();
-  }, []);
+    let cancelled = false;
 
-  // Auto-select failing pod if found in cluster
-  useEffect(() => {
-    if (livePods.length > 0) {
-      const failingPod = livePods.find((p) => p.status === 'Error' || p.status === 'OOMKilled' || p.status === 'CrashLoopBackOff' || p.name.includes('crash'));
-      if (failingPod) {
-        setTargetPod(failingPod.name);
-        setTargetNamespace(failingPod.namespace);
-      } else if (livePods[0]) {
-        setTargetPod(livePods[0].name);
-        setTargetNamespace(livePods[0].namespace);
+    const initialize = async () => {
+      setIsLoadingSessions(true);
+      setError('');
+
+      try {
+        const list = await copilotApi.getSessions();
+        if (cancelled) return;
+
+        setSessions(list);
+
+        if (list.length > 0) {
+          const firstSession = list[0];
+          setActiveSessionId(firstSession.id);
+
+          const requestId = ++messagesRequestRef.current;
+          const history = await copilotApi.getSessionMessages(firstSession.id);
+
+          if (!cancelled && requestId === messagesRequestRef.current) {
+            setMessages(history.map(mapStoredMessage));
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error ? err.message : 'Unable to load Copilot sessions.',
+          );
+        }
+      } finally {
+        if (!cancelled) setIsLoadingSessions(false);
       }
-    }
-  }, [livePods]);
+    };
+
+    initialize();
+
+    return () => {
+      cancelled = true;
+      messagesRequestRef.current++;
+    };
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  const loadSessions = async () => {
-    const list = await copilotApi.getSessions();
-    setSessions(list);
+  const handleCreateNewSession = async () => {
+    if (isLoading) return;
+
+    setError('');
+
+    try {
+      const created = await copilotApi.createSession('New conversation');
+
+      messagesRequestRef.current++;
+      setSessions((previous) => [created, ...previous]);
+      setActiveSessionId(created.id);
+      setMessages([]);
+      setShowSessionsDropdown(false);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Unable to create a new session.',
+      );
+    }
   };
 
-  const handleCreateNewSession = async () => {
-    const newTitle = `Incident Analysis #${sessions.length + 1}`;
-    const created = await copilotApi.createSession(newTitle);
-    setSessions((prev) => [created, ...prev]);
-    setActiveSessionId(created.id);
+  const handleSelectSession = async (sessionId: string) => {
+    if (sessionId === activeSessionId) {
+      setShowSessionsDropdown(false);
+      return;
+    }
+
+    const requestId = ++messagesRequestRef.current;
+
+    setActiveSessionId(sessionId);
+    setMessages([]);
+    setError('');
     setShowSessionsDropdown(false);
-    setMessages([
-      {
-        id: `msg-${Date.now()}`,
-        sender: 'assistant',
-        content: `New Chat Session **${newTitle}** initialized.\n\nReady to analyze target pod \`${targetPod}\` in namespace \`${targetNamespace}\`. What incident or log stream would you like me to inspect?`,
-        timestamp: 'Just now',
-      },
-    ]);
-    success('New Chat Session Created', newTitle);
+
+    try {
+      const history = await copilotApi.getSessionMessages(sessionId);
+
+      if (requestId === messagesRequestRef.current) {
+        setMessages(history.map(mapStoredMessage));
+      }
+    } catch (err) {
+      if (requestId === messagesRequestRef.current) {
+        setError(
+          err instanceof Error ? err.message : 'Unable to load conversation history.',
+        );
+      }
+    }
   };
 
   const handleSendMessage = async (customPrompt?: string) => {
-    const text = customPrompt || inputMessage;
-    if (!text.trim() || isLoading) return;
+    const text = (customPrompt ?? inputMessage).trim();
 
-    let podToDiagnose = targetPod;
-    let nsToDiagnose = targetNamespace;
+    if (!text || isLoading) return;
 
-    const podMatch = text.match(/(?:pod|crash on|container)\s+([a-zA-Z0-9\-_]+)/i);
-    if (podMatch && podMatch[1] && !['the', 'a', 'this', 'in', 'default'].includes(podMatch[1].toLowerCase())) {
-      podToDiagnose = podMatch[1];
-      setTargetPod(podToDiagnose);
-    }
-
-    if (text.toLowerCase().includes('default')) {
-      nsToDiagnose = 'default';
-      setTargetNamespace('default');
-    } else if (text.toLowerCase().includes('payment')) {
-      nsToDiagnose = 'payment';
-      setTargetNamespace('payment');
-    }
-
-    const userMsg: ChatMessage = {
-      id: `usr-${Date.now()}`,
-      sender: 'user',
-      content: text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-    if (!customPrompt) setInputMessage('');
+    setError('');
+    setInputMessage('');
     setIsLoading(true);
 
+    const requestId = ++messagesRequestRef.current;
+
+    const userMessage: ChatMessage = {
+      id: `local-user-${Date.now()}`,
+      sender: 'user',
+      content: text,
+      timestamp: formatTime(new Date().toISOString()),
+    };
+
+    setMessages((previous) => [...previous, userMessage]);
+
     try {
-      const res = await copilotApi.chat(text, nsToDiagnose, podToDiagnose);
-      const assistantMsg: ChatMessage = {
-        id: `ast-${Date.now()}`,
+      let sessionId = activeSessionId;
+
+      // Create a real persisted session only when the first message is sent.
+      if (!sessionId) {
+        const created = await copilotApi.createSession(
+          text.slice(0, 60) || 'New conversation',
+        );
+
+        sessionId = created.id;
+        setSessions((previous) => [created, ...previous]);
+        setActiveSessionId(created.id);
+      }
+
+      const response = await copilotApi.chat(
+        sessionId,
+        text,
+        selectedPod?.namespace,
+        selectedPod?.name,
+      );
+
+      if (requestId !== messagesRequestRef.current) return;
+
+      const assistantMessage: ChatMessage = {
+        id: `local-assistant-${Date.now()}`,
         sender: 'assistant',
-        content: res.reply,
-        responseMeta: res,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        content: response.reply,
+        timestamp: formatTime(new Date().toISOString()),
+        responseMeta: response,
+        toolsExecuted: response.toolsExecuted,
+        confidenceScore: response.diagnosis?.confidenceScore,
+        remediationCommand: response.diagnosis?.remediationCommand,
       };
-      setMessages((prev) => [...prev, assistantMsg]);
+
+      setMessages((previous) => [...previous, assistantMessage]);
+    } catch (err) {
+      if (requestId === messagesRequestRef.current) {
+        setError(
+          err instanceof Error ? err.message : 'Copilot request failed.',
+        );
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === messagesRequestRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
-  const activeSessionTitle = sessions.find((s) => s.id === activeSessionId)?.sessionTitle || 'Incident Analysis';
-
   return (
     <div className="max-w-5xl mx-auto w-full space-y-6 pb-12">
-      {/* Page Header with Centered Title & Session Controls */}
       <PageHeader
         title="KubeMind AI Copilot Command Center"
-        description="Autonomous LangGraph StateGraph agent orchestrating Model Context Protocol (MCP) tools for Kubernetes incident Root Cause Analysis"
+        description="Ask questions about your Kubernetes cluster and investigate incidents using available cluster evidence."
         actions={
           <div className="flex items-center gap-2">
-            {/* Session Switcher Dropdown */}
             <div className="relative">
               <button
                 type="button"
@@ -169,37 +278,47 @@ export function CopilotChatPage() {
               {showSessionsDropdown && (
                 <div className="absolute right-0 mt-1 w-64 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 shadow-xl z-30 space-y-1">
                   <div className="flex items-center justify-between px-2 py-1 border-b border-slate-100 dark:border-slate-800">
-                    <span className="text-[10px] font-mono uppercase font-bold text-slate-400">Past Sessions</span>
+                    <span className="text-[10px] font-mono uppercase font-bold text-slate-400">
+                      Past Sessions
+                    </span>
                     <button
+                      type="button"
                       onClick={handleCreateNewSession}
                       className="text-[10px] font-mono text-blue-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
                     >
                       <Plus className="h-3 w-3" /> New
                     </button>
                   </div>
-                  {sessions.map((s) => (
+
+                  {sessions.map((session) => (
                     <button
-                      key={s.id}
-                      onClick={() => {
-                        setActiveSessionId(s.id);
-                        setShowSessionsDropdown(false);
-                      }}
+                      type="button"
+                      key={session.id}
+                      onClick={() => handleSelectSession(session.id)}
                       className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-mono truncate transition-colors ${
-                        activeSessionId === s.id
+                        activeSessionId === session.id
                           ? 'bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-cyan-400 font-bold'
                           : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60'
                       }`}
                     >
-                      {s.sessionTitle}
+                      {session.sessionTitle}
                     </button>
                   ))}
+
+                  {sessions.length === 0 && (
+                    <p className="px-2 py-3 text-xs text-slate-400">
+                      No saved conversations yet.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
 
             <button
+              type="button"
               onClick={handleCreateNewSession}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium font-sans shadow-sm transition-all"
+              disabled={isLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shadow-sm disabled:opacity-50"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>New Chat</span>
@@ -208,7 +327,6 @@ export function CopilotChatPage() {
         }
       />
 
-      {/* Centered Diagnostic Target Scope Bar */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -216,47 +334,57 @@ export function CopilotChatPage() {
               <Bot className="h-5 w-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono">Diagnostic Target Scope</span>
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-semibold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Cluster Connected
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider font-mono">
+                  Diagnostic Target Scope
+                </span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  <span className={`w-1.5 h-1.5 rounded-full ${livePods.length > 0 ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                  {livePods.length > 0 ? `${livePods.length} live pods available` : 'No live pods available'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Target Pod: <span className="font-mono font-bold text-blue-600 dark:text-cyan-400">{targetPod}</span>
+                Pod:{' '}
+                <span className="font-mono font-bold text-blue-600 dark:text-cyan-400">
+                  {selectedPod?.name ?? 'None selected'}
+                </span>
                 <span className="mx-2 text-slate-300 dark:text-slate-700">•</span>
-                Namespace: <span className="font-mono font-bold text-purple-600 dark:text-purple-400">{targetNamespace}</span>
+                Namespace:{' '}
+                <span className="font-mono font-bold text-purple-600 dark:text-purple-400">
+                  {selectedPod?.namespace ?? '—'}
+                </span>
               </p>
             </div>
           </div>
 
-          {/* Pod & Namespace Selector Dropdowns */}
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <select
-              value={targetPod}
-              onChange={(e) => {
-                const selected = livePods.find((p) => p.name === e.target.value);
-                setTargetPod(e.target.value);
-                if (selected) setTargetNamespace(selected.namespace);
-              }}
+              value={targetPodKey}
+              onChange={(event) => setTargetPodKey(event.target.value)}
               className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 py-2 px-3 text-xs text-slate-900 dark:text-slate-100 font-mono font-medium focus:border-blue-500 focus:outline-none flex-1 sm:w-60 shadow-sm"
             >
-              {livePods.map((p) => (
-                <option key={p.name} value={p.name}>
-                  {p.name.includes('crash') || p.status === 'Error' ? '💥 ' : '📦 '}
-                  {p.name} ({p.namespace})
+              <option value="">No specific pod</option>
+              {livePods.map((pod) => (
+                <option
+                  key={`${pod.namespace}/${pod.name}`}
+                  value={`${pod.namespace}/${pod.name}`}
+                >
+                  {pod.name} ({pod.namespace})
                 </option>
               ))}
-              {!livePods.some((p) => p.name === targetPod) && (
-                <option value={targetPod}>🎯 {targetPod} ({targetNamespace})</option>
-              )}
             </select>
 
             <button
-              onClick={() => handleSendMessage(`Diagnose crash on ${targetPod} in ${targetNamespace} namespace`)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-mono font-bold shadow-md shadow-rose-600/20 transition-all shrink-0"
-              title="Run Automated Diagnostic Analysis"
+              type="button"
+              disabled={!selectedPod || isLoading}
+              onClick={() =>
+                selectedPod &&
+                handleSendMessage(
+                  `Diagnose pod ${selectedPod.name} in namespace ${selectedPod.namespace}.`,
+                )
+              }
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-mono font-bold shadow-md disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+              title="Diagnose selected live pod"
             >
               <ShieldAlert className="h-4 w-4" />
               <span>Diagnose</span>
@@ -264,30 +392,34 @@ export function CopilotChatPage() {
           </div>
         </div>
 
-        {/* Quick Click Live Workloads Pills */}
         {livePods.length > 0 && (
           <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] font-mono uppercase font-bold text-slate-400 shrink-0">Live Pods:</span>
-            {livePods.slice(0, 6).map((p) => {
-              const isCrash = p.name.includes('crash') || p.status === 'Error' || p.status === 'OOMKilled';
-              const isSelected = targetPod === p.name;
+            <span className="text-[10px] font-mono uppercase font-bold text-slate-400 shrink-0">
+              Live Pods:
+            </span>
+            {livePods.slice(0, 6).map((pod) => {
+              const key = `${pod.namespace}/${pod.name}`;
+              const isSelected = targetPodKey === key;
+              const isProblem =
+                pod.status === 'Error' ||
+                pod.status === 'OOMKilled' ||
+                pod.status === 'CrashLoopBackOff';
+
               return (
                 <button
-                  key={p.name}
-                  onClick={() => {
-                    setTargetPod(p.name);
-                    setTargetNamespace(p.namespace);
-                  }}
+                  type="button"
+                  key={key}
+                  onClick={() => setTargetPodKey(key)}
                   className={`text-[10px] font-mono px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
                     isSelected
                       ? 'bg-blue-600 text-white border-blue-600 shadow-sm font-bold'
-                      : isCrash
-                      ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-900/60 hover:bg-rose-100 font-bold'
-                      : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200'
+                      : isProblem
+                        ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-900/60'
+                        : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                   }`}
                 >
-                  {isCrash && <AlertCircle className="h-3 w-3 text-rose-500 shrink-0" />}
-                  <span className="truncate max-w-[130px]">{p.name}</span>
+                  {isProblem && <AlertCircle className="h-3 w-3 shrink-0" />}
+                  <span className="truncate max-w-[130px]">{pod.name}</span>
                 </button>
               );
             })}
@@ -295,126 +427,187 @@ export function CopilotChatPage() {
         )}
       </div>
 
-      {/* Main Conversation Stream (Centered & Clean) */}
+      {error && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-xl border border-rose-300 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-3 text-xs text-rose-700 dark:text-rose-300"
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setError('')}
+            className="ml-auto underline shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden flex flex-col">
-        {/* Chat History Messages */}
         <div className="p-6 md:p-8 space-y-6 min-h-[460px] max-h-[620px] overflow-y-auto">
-          {messages.map((msg) => (
+          {isLoadingSessions && (
+            <p className="text-xs text-slate-400 font-mono">Loading saved conversations...</p>
+          )}
+
+          {!isLoadingSessions && messages.length === 0 && (
+            <div className="min-h-[350px] flex flex-col items-center justify-center text-center gap-3">
+              <Bot className="h-10 w-10 text-slate-300 dark:text-slate-700" />
+              <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+                No messages in this conversation yet.
+              </p>
+              <p className="text-xs text-slate-400 max-w-md">
+                Ask a question about your cluster, or select a live pod to investigate an incident.
+              </p>
+            </div>
+          )}
+
+          {messages.map((message) => (
             <div
-              key={msg.id}
+              key={message.id}
               className={`flex items-start gap-4 ${
-                msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'
+                message.sender === 'user' ? 'flex-row-reverse' : 'flex-row'
               }`}
             >
-              {/* Avatar */}
               <div
                 className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 shadow-md ${
-                  msg.sender === 'user'
+                  message.sender === 'user'
                     ? 'bg-gradient-to-tr from-blue-600 to-indigo-600 text-white'
                     : 'bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 text-white'
                 }`}
               >
-                {msg.sender === 'user' ? <User className="h-4.5 w-4.5" /> : <Bot className="h-4.5 w-4.5" />}
+                {message.sender === 'user' ? (
+                  <User className="h-4 w-4" />
+                ) : (
+                  <Bot className="h-4 w-4" />
+                )}
               </div>
 
-              {/* Message Bubble / Card */}
-              <div className={`space-y-1.5 max-w-3xl ${msg.sender === 'user' ? 'text-right' : 'text-left flex-1'}`}>
-                {msg.sender === 'user' ? (
-                  <div className="inline-block p-4 rounded-2xl rounded-tr-sm bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium text-xs leading-relaxed shadow-md shadow-blue-500/20 text-left">
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+              <div className={`space-y-1.5 max-w-3xl ${message.sender === 'user' ? 'text-right' : 'text-left flex-1'}`}>
+                {message.sender === 'user' ? (
+                  <div className="inline-block p-4 rounded-2xl rounded-tr-sm bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium text-xs leading-relaxed shadow-md text-left">
+                    <p className="whitespace-pre-wrap">{message.content}</p>
                   </div>
                 ) : (
                   <div className="p-5 rounded-2xl rounded-tl-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-sm text-xs leading-relaxed">
-                    <MarkdownMessage content={msg.content} />
+                    <MarkdownMessage content={message.content} />
 
-                    {/* Executed MCP Tools Badge & Execution Trace Chips */}
-                    {msg.responseMeta && (
-                      <div className="mt-5 pt-3.5 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between text-[11px] font-mono flex-wrap gap-2">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-slate-500 dark:text-slate-400 font-semibold">MCP Tools Executed:</span>
-                          {msg.responseMeta.toolsExecuted.map((t, idx) => (
-                            <span
-                              key={idx}
-                              className="px-2 py-0.5 rounded bg-blue-50 dark:bg-cyan-950/40 text-blue-700 dark:text-cyan-300 border border-blue-200 dark:border-cyan-800/60 font-bold"
-                            >
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-
-                        <span className="text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                          {msg.responseMeta.diagnosis.confidenceScore}% Diagnostic Match
+                    {message.toolsExecuted && message.toolsExecuted.length > 0 && (
+                      <div className="mt-5 pt-3.5 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2 flex-wrap text-[11px] font-mono">
+                        <span className="text-slate-500 dark:text-slate-400 font-semibold">
+                          MCP tools:
                         </span>
+                        {message.toolsExecuted.map((tool, index) => (
+                          <span
+                            key={`${tool}-${index}`}
+                            className="px-2 py-0.5 rounded bg-blue-50 dark:bg-cyan-950/40 text-blue-700 dark:text-cyan-300 border border-blue-200 dark:border-cyan-800/60 font-bold"
+                          >
+                            {tool}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {typeof message.confidenceScore === 'number' && (
+                      <div className="mt-3 flex items-center gap-1.5 text-[11px] font-mono text-emerald-700 dark:text-emerald-400">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Confidence: {message.confidenceScore}%
+                      </div>
+                    )}
+
+                    {message.remediationCommand && (
+                      <div className="mt-3 rounded-lg border border-amber-300 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/20 p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-2">
+                          Suggested remediation command — not executed
+                        </p>
+                        <pre className="whitespace-pre-wrap break-all text-xs text-slate-800 dark:text-slate-200">
+                          {message.remediationCommand}
+                        </pre>
                       </div>
                     )}
                   </div>
                 )}
-                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono block px-1">{msg.timestamp}</span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono block px-1">
+                  {message.timestamp}
+                </span>
               </div>
             </div>
           ))}
 
           {isLoading && (
-            <div className="flex items-center gap-3 p-4 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 text-xs text-cyan-800 dark:text-cyan-200 font-mono shadow-sm">
+            <div className="flex items-center gap-3 p-4 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 text-xs text-cyan-800 dark:text-cyan-200 font-mono">
               <RefreshCw className="h-4 w-4 animate-spin text-cyan-600 dark:text-cyan-400" />
-              <span>LangGraph Agent executing StateGraph (MCP Ingestion → Stderr Analysis → RCA Synthesis)...</span>
+              <span>Waiting for the Copilot response...</span>
             </div>
           )}
+
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Bottom Prompts & Input Area */}
         <div className="p-4 md:p-6 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 space-y-3">
-          {/* 4 Quick Suggestion Chips */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs font-mono">
             <button
-              onClick={() => handleSendMessage(`Diagnose crash on ${targetPod} in ${targetNamespace} namespace`)}
-              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-rose-500/40 hover:bg-rose-500/5 text-slate-700 dark:text-slate-300 text-left transition-all flex items-center gap-2 shadow-sm truncate"
+              type="button"
+              disabled={!selectedPod || isLoading}
+              onClick={() =>
+                selectedPod &&
+                handleSendMessage(
+                  `Diagnose pod ${selectedPod.name} in namespace ${selectedPod.namespace}.`,
+                )
+              }
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-left flex items-center gap-2 disabled:opacity-40"
             >
               <AlertTriangle className="h-3.5 w-3.5 text-rose-500 shrink-0" />
-              <span className="truncate">Diagnose {targetPod}</span>
+              <span className="truncate">
+                {selectedPod ? `Diagnose ${selectedPod.name}` : 'Select a pod to diagnose'}
+              </span>
             </button>
 
             <button
-              onClick={() => handleSendMessage("Which pod is consuming the most memory?")}
-              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-amber-500/40 hover:bg-amber-500/5 text-slate-700 dark:text-slate-300 text-left transition-all flex items-center gap-2 shadow-sm truncate"
+              type="button"
+              disabled={isLoading}
+              onClick={() => handleSendMessage('Which pod is consuming the most memory?')}
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-left flex items-center gap-2 disabled:opacity-40"
             >
               <Zap className="h-3.5 w-3.5 text-amber-500 shrink-0" />
               <span className="truncate">Top Memory Pods</span>
             </button>
 
             <button
-              onClick={() => handleSendMessage("Show recent cluster warning events.")}
-              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-500/40 hover:bg-indigo-500/5 text-slate-700 dark:text-slate-300 text-left transition-all flex items-center gap-2 shadow-sm truncate"
+              type="button"
+              disabled={isLoading}
+              onClick={() => handleSendMessage('Show recent cluster warning events.')}
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-left flex items-center gap-2 disabled:opacity-40"
             >
               <Layers className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
               <span className="truncate">Cluster Warning Events</span>
             </button>
 
             <button
-              onClick={() => handleSendMessage("Suggest remediation fix for OOMKilled.")}
-              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-cyan-500/40 hover:bg-cyan-500/5 text-slate-700 dark:text-slate-300 text-left transition-all flex items-center gap-2 shadow-sm truncate"
+              type="button"
+              disabled={isLoading}
+              onClick={() => handleSendMessage('Explain how to investigate an OOMKilled pod.')}
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-left flex items-center gap-2 disabled:opacity-40"
             >
               <Sparkles className="h-3.5 w-3.5 text-cyan-500 shrink-0" />
-              <span className="truncate">Fix OOMKilled</span>
+              <span className="truncate">Investigate OOMKilled</span>
             </button>
           </div>
 
-          {/* Centered Floating Prompt Input Bar */}
           <div className="relative flex items-center">
             <input
               type="text"
               value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder={`Ask AI Copilot to analyze logs, diagnose ${targetPod}, or generate kubectl fixes...`}
-              className="w-full rounded-2xl border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900 py-3.5 pl-4 pr-12 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-blue-500 focus:outline-none shadow-sm font-sans"
+              onChange={(event) => setInputMessage(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && handleSendMessage()}
+              placeholder="Ask about your Kubernetes cluster..."
+              className="w-full rounded-2xl border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-900 py-3.5 pl-4 pr-12 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:border-blue-500 focus:outline-none shadow-sm"
             />
             <button
+              type="button"
               onClick={() => handleSendMessage()}
               disabled={isLoading || !inputMessage.trim()}
-              className="absolute right-2.5 h-8 w-8 rounded-xl bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center transition-all disabled:opacity-50 shadow-md shadow-blue-500/20"
+              className="absolute right-2.5 h-8 w-8 rounded-xl bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center disabled:opacity-50 shadow-md"
               title="Send Message"
             >
               <Send className="h-4 w-4" />
