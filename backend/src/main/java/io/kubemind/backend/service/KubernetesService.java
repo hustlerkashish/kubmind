@@ -243,12 +243,6 @@ public class KubernetesService {
                                 break;
                             }
                         }
-                        if (totalRestarts > 0 && cs.getLastState() != null && cs.getLastState().getTerminated() != null
-                                && cs.getLastState().getTerminated().getReason() != null) {
-                            if ("Running".equalsIgnoreCase(effectiveStatus)) {
-                                effectiveStatus = cs.getLastState().getTerminated().getReason();
-                            }
-                        }
                     }
                 }
 
